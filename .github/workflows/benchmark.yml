@@ -1,0 +1,31 @@
+# .github/workflows/benchmark.yml
+name: Benchmark
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "luajit-2.1"
+
+      - name: Install LuaRocks
+        uses: leafo/gh-actions-luarocks@v5
+
+      - name: Install dependencies
+        run: |
+          luarocks install busted --local
+          luarocks install lua-cjson --local
+
+      - name: Run obfuscator benchmark
+        run: |
+          export PATH="$PATH:$HOME/.luarocks/bin"
+          lua test/benchmark/obfuscator_bench.lua

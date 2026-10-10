@@ -1,0 +1,24 @@
+# 覆盖率报告 / Coverage reports
+luacov.report.out
+luacov.stats.out
+
+# Claude / AI 工具元数据
+.claude/
+
+# 编译产物 / Build artifacts
+*.o
+*.so
+
+# 日志 / Logs
+*.log
+logs/
+
+# OS 文件 / OS files
+.DS_Store
+Thumbs.db
+
+# 编辑器 / Editor
+*.swp
+*~
+.idea/
+.vscode/

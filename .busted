@@ -1,0 +1,11 @@
+-- .busted
+-- busted 配置 / busted configuration
+
+return {
+    _all = {
+        lpath = "src/?.lua;src/?/init.lua;spec/?.lua;spec/?/init.lua",
+    },
+    default = {
+        coverage = false,
+    },
+}
