@@ -19,6 +19,12 @@ jobs:
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v5
+        with:
+          # 3.11.1 compiles the oversized manifest under LuaJIT; 3.13 uses JSON.
+          luaRocksVersion: "3.13.0"
+
+      - name: Verify installed LuaRocks
+        run: luarocks --version
 
       - name: Install dependencies
         run: |
