@@ -9,7 +9,7 @@ The system SHALL generate short codes using a two-phase algorithm: golden ratio 
 - **GIVEN** a sequential positive integer ID (e.g., 1)
 - **WHEN** the system generates a short code
 - **THEN** the resulting code SHALL be a Base62 string of at least 6 characters
-- **AND** the code SHALL NOT be trivially predictable from the input ID
+- **AND** the code SHALL be non-sequential; the reversible permutation SHALL NOT be treated as an authorization token
 
 #### Scenario: Different IDs produce different codes
 
@@ -36,14 +36,14 @@ The system SHALL encode integers using Base62 with character set `0-9a-zA-Z`.
 
 #### Scenario: Encode maximum value
 
-- **GIVEN** a large 64-bit integer
+- **GIVEN** the maximum mapped 32-bit value plus the Base62 length offset
 - **WHEN** the system encodes it to Base62
 - **THEN** the result SHALL be a valid Base62 string
 - **AND** decoding it back SHALL produce the original integer
 
 ### Requirement: Golden ratio obfuscation
 
-The system SHALL obfuscate sequential IDs using golden ratio multiplication to produce non-sequential, non-predictable output values.
+The system SHALL obfuscate sequential IDs using golden ratio multiplication to produce non-sequential output values.
 
 #### Scenario: Obfuscation produces non-sequential output
 
@@ -57,3 +57,19 @@ The system SHALL obfuscate sequential IDs using golden ratio multiplication to p
 - **GIVEN** a range of sequential IDs from 1 to 100000
 - **WHEN** the system applies golden ratio obfuscation to all IDs
 - **THEN** no two different IDs SHALL produce the same obfuscated value
+
+### Requirement: Exact bounded ID space
+
+The system SHALL generate codes using exact 32-bit modular arithmetic on LuaJIT and SHALL reject IDs outside 0..4294967295.
+
+#### Scenario: Boundary values remain distinct
+
+- **GIVEN** IDs near 2^22, 2^31 and 2^32-1
+- **WHEN** codes are generated and reversed
+- **THEN** the exact input IDs SHALL be recovered without floating point loss
+
+#### Scenario: Overflow does not wrap
+
+- **GIVEN** an ID of 4294967296 or a fractional ID
+- **WHEN** code generation is attempted
+- **THEN** the input SHALL be rejected rather than generating a previously used code

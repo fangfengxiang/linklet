@@ -31,14 +31,14 @@ function _M:handle(ctx, next)
     local signature = req:header("X-Signature") or req:header("X-Sign")
     local timestamp = req:header("X-Timestamp")
 
-    if not access_key then
+    if type(access_key) ~= "string" or access_key == "" then
         ctx.auth_error = "missing access key"
         if ctx.response then
             ctx.response:unauthorized(ctx.auth_error)
         end
         return nil, ctx.auth_error
     end
-    if not signature then
+    if type(signature) ~= "string" or signature == "" then
         ctx.auth_error = "missing signature"
         if ctx.response then
             ctx.response:unauthorized(ctx.auth_error)
@@ -47,15 +47,21 @@ function _M:handle(ctx, next)
     end
 
     -- 时间戳校验（防止重放攻击）/ Timestamp validation
+    if type(timestamp) ~= "string" then
+        ctx.auth_error = "missing timestamp"
+        if ctx.response then ctx.response:unauthorized(ctx.auth_error) end
+        return nil, ctx.auth_error
+    end
     if timestamp then
         local ts = tonumber(timestamp)
-        if not ts then
+        if not ts or ts ~= math.floor(ts) then
             ctx.auth_error = "invalid timestamp"
             return nil, ctx.auth_error
         end
         -- OpenResty 环境使用 ngx.time
         local now
-        local ok, ngx = pcall(require, "ngx")
+        local ngx = ngx
+    local ok = ngx ~= nil
         if ok and ngx.time then
             now = ngx.time()
         else
@@ -74,10 +80,6 @@ function _M:handle(ctx, next)
     -- 查找凭证 / Look up credential
     local cred, cerr = self.credential_model:find_by_access_key(access_key)
     if not cred then
-        local ok_ngx, ngx = pcall(require, "ngx")
-        if ok_ngx and ngx.log then
-            ngx.log(ngx.ERR, "find_by_access_key failed: ak=", tostring(access_key), " err=", tostring(cerr))
-        end
         ctx.auth_error = "invalid access key"
         if ctx.response then
             ctx.response:unauthorized(ctx.auth_error)
@@ -87,13 +89,16 @@ function _M:handle(ctx, next)
 
     -- 构造待签名字符串 / Build string to sign
     local method = req:method()
-    local uri = req:uri()
+    local uri = req.signature_uri and req:signature_uri() or req:uri()
     -- 读取原始请求体用于签名验证 / Read raw body for signature
     local body = ""
-    local ngx_ok, ngx = pcall(require, "ngx")
-    if ngx_ok and ngx.req and ngx.req.read_body then
-        ngx.req.read_body()
-        body = ngx.req.get_body_data() or ""
+    if req.raw_body then
+        local err
+        body, err = req:raw_body()
+        if not body then
+            if ctx.response then ctx.response:error_response(4000, "cannot read request body", 400) end
+            return nil, err
+        end
     elseif ctx.raw_body then
         body = ctx.raw_body
     end

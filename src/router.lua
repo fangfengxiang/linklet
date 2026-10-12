@@ -128,14 +128,6 @@ function _M:dispatch(ctx)
     end
 
     ctx.params = params
-    -- 合并请求参数
-    if ctx.request then
-        local req_params = ctx.request:all_params()
-        for k, v in pairs(req_params) do
-            params[k] = params[k] or v
-        end
-    end
-
     -- 构建中间件链 / Build middleware chain
     local chain = {}
     -- 全局中间件 / global middleware

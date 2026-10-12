@@ -45,8 +45,9 @@ function _M:create(ctx)
     end
 
     -- 校验场景归属 / Validate scene ownership
-    local scene = self.scene_model:find_by_id_with_domain(scene_id)
+    local scene, scene_err = self.scene_model:find_by_id_with_domain(scene_id)
     if not scene then
+        if scene_err then return ctx.response:internal_error("database unavailable") end
         return ctx.response:error_response(4003, "scene not found or inactive", 404)
     end
     if scene.tenant_id ~= ctx.tenant_id then
@@ -97,14 +98,15 @@ function _M:gen(ctx)
     end
 
     -- 查找场景及域名 / Find scene with domain
-    local scene = self.scene_model:find_by_id_with_domain(scene_id)
+    local scene, scene_err = self.scene_model:find_by_id_with_domain(scene_id)
     if not scene then
+        if scene_err then return ctx.response:internal_error("database unavailable") end
         return ctx.response:error_response(4003, "scene not found or inactive", 404)
     end
     if scene.tenant_id ~= ctx.tenant_id then
         return ctx.response:error_response(4004, "scene does not belong to tenant", 403)
     end
-    if not scene.domain or scene.domain == "" then
+    if not scene.domain or scene.domain == "" or tonumber(scene.domain_status) ~= 1 then
         return ctx.response:error_response(4005, "domain not configured for scene", 400)
     end
 
@@ -129,7 +131,9 @@ function _M:gen(ctx)
     end
 
     -- 拼接完整短链 URL
-    local short_url = (scene.domain or "") .. "/" .. code
+    local domain = scene.domain:gsub("/+$", "")
+    if not domain:match("^https?://") then domain = "https://" .. domain end
+    local short_url = domain .. "/" .. code
 
     return ctx.response:success({
         code = code,
@@ -150,14 +154,15 @@ function _M:disable(ctx)
     end
 
     -- 停用短链 / Disable link
-    local link = self.link_model:disable(code)
+    local link, err = self.link_model:disable(code, ctx.tenant_id)
     if not link then
+        if err then return ctx.response:internal_error("database unavailable") end
         return ctx.response:error_response(4006, "link not found or already disabled", 404)
     end
 
     -- 失效缓存 / Invalidate cache
     if self.cache then
-        self.cache:delete("link:" .. code)
+        self.cache:invalidate(code)
     end
 
     return ctx.response:success({

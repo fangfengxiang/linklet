@@ -19,7 +19,11 @@ end
 -- @param code 短码
 -- @return row or nil
 function _M:find_by_code(code)
-    local sql = "SELECT * FROM sl_link WHERE code = $1 LIMIT 1"
+    local sql = [[SELECT l.*, EXTRACT(EPOCH FROM l.expires_at) AS expires_epoch, s.tenant_id,
+        s.status AS scene_status, t.status AS tenant_status, d.status AS domain_status
+        FROM sl_link l JOIN sl_scene s ON s.scene_id = l.scene_id
+        JOIN sl_tenant t ON t.id = s.tenant_id LEFT JOIN sl_domain_entry d ON d.id = s.domain_entry_id
+        WHERE l.code = $1 LIMIT 1]]
     local res, err = self.db:query(sql, code)
     if not res then
         return nil, err
@@ -56,9 +60,11 @@ end
 --- 停用短链 / Disable a short link (set status=2)
 -- @param code 短码
 -- @return row or nil, err
-function _M:disable(code)
-    local sql = "UPDATE sl_link SET status = 2 WHERE code = $1 AND status = 1 RETURNING *"
-    local res, err = self.db:query(sql, code)
+function _M:disable(code, tenant_id)
+    local sql = [[UPDATE sl_link l SET status = 2 FROM sl_scene s
+        WHERE l.scene_id = s.scene_id AND l.code = $1 AND l.status = 1
+        AND s.tenant_id = $2 RETURNING l.*]]
+    local res, err = self.db:query(sql, code, tenant_id)
     if not res then
         return nil, err
     end

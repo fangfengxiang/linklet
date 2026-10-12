@@ -4,6 +4,7 @@
 BEGIN;
 
 DROP TABLE IF EXISTS sl_id_sequence;
+DROP TABLE IF EXISTS sl_tenant_credential;
 DROP TABLE IF EXISTS sl_link;
 DROP TABLE IF EXISTS sl_scene_config;
 DROP TABLE IF EXISTS sl_scene;

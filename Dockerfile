@@ -1,37 +1,44 @@
-# Dockerfile
-# Linklet 多租户短链系统 / Multi-tenant short link system
-# 基于 OpenResty 官方镜像 / Based on official OpenResty image
+FROM openresty/openresty:alpine-fat AS dependencies
+RUN apk add --no-cache build-base \
+    && luarocks install pgmoon 1.18.0-1 \
+    && luarocks install lua-cjson 2.1.0.10-1
 
-FROM openresty/openresty:alpine-fat
-
-# 安装依赖 / Install dependencies
-RUN apk add --no-cache \
-    postgresql-client \
-    postgresql-libs \
-    build-base \
-    && luarocks install pgmoon \
-    && luarocks install lua-cjson \
-    && apk del build-base \
-    && apk add --no-cache curl bash openssl
-
-# 复制项目文件 / Copy project files
+FROM openresty/openresty:alpine-fat AS runtime
+RUN apk add --no-cache curl
+COPY --from=dependencies /usr/local/openresty/luajit/share/lua/5.1/ /usr/local/openresty/luajit/share/lua/5.1/
+COPY --from=dependencies /usr/local/openresty/luajit/lib/lua/5.1/ /usr/local/openresty/luajit/lib/lua/5.1/
 COPY src/ /app/src/
+COPY conf/ /app/conf/
 COPY conf/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY conf/conf.d/ /etc/nginx/conf.d/
-COPY scripts/ /app/scripts/
 COPY migrations/ /app/migrations/
-
-# 设置权限 / Set permissions
-RUN chmod +x /app/scripts/e2e_test.sh \
-    && mkdir -p /app/logs /app/run
-
+COPY scripts/ /app/scripts/
 WORKDIR /app
-
-# 健康检查 / Health check
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
-    CMD curl -sf http://localhost:80/health || exit 1
-
+    CMD curl -sf http://127.0.0.1/health || exit 1
 EXPOSE 80
-
-# 启动脚本：等待 PostgreSQL 就绪 → 执行迁移 → 种子数据 → 启动 OpenResty
 CMD ["openresty", "-g", "daemon off;"]
+
+FROM dependencies AS acceptance-dependencies
+RUN apk add --no-cache perl perl-dev make gcc musl-dev postgresql-client wget python3 bash curl \
+    && wget --timeout=30 --tries=3 -qO /tmp/cpanm https://cpanmin.us \
+    && perl /tmp/cpanm --notest Test::Nginx@0.32 \
+    && rm /tmp/cpanm
+RUN luarocks install busted || luarocks install busted || luarocks install busted
+RUN luarocks install luacov || luarocks install luacov || luarocks install luacov
+RUN luarocks install luacheck || luarocks install luacheck || luarocks install luacheck
+
+FROM acceptance-dependencies AS acceptance
+COPY --from=runtime /app/ /app/
+WORKDIR /app
+COPY .busted .luacov .luacheckrc Makefile linklet-scm-1.rockspec /app/
+COPY spec/ /app/spec/
+COPY test/ /app/test/
+COPY README.md /app/
+COPY docs/ /app/docs/
+COPY openspec/ /app/openspec/
+ENTRYPOINT []
+CMD ["bash", "scripts/test_nginx.sh"]
+
+# A plain docker build must produce the serving application, not the test runner.
+FROM runtime AS production

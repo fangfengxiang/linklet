@@ -21,8 +21,12 @@ function _M:handle(ctx, next)
         local body, err = ctx.request:json_body()
         if body then
             ctx.json_body = body
+            ctx.params = ctx.request:all_params()
         end
-        -- body 为空不阻止后续处理（可能是 GET 请求）
+        if not body then
+            if ctx.response then ctx.response:error_response(4000, err, 400) end
+            return nil, err
+        end
     end
     return next()
 end

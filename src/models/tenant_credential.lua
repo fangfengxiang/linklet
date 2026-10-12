@@ -7,37 +7,25 @@ local tostring = tostring
 local type = type
 local pcall = pcall
 
--- 加载 bit 库 / Load bit library (LuaJIT bit, bit32, or Lua 5.3+ native operators)
-local _bit
-local ok_bit, mod = pcall(require, "bit")
-if ok_bit then _bit = mod else
-    local ok_bit32, mod32 = pcall(require, "bit32")
-    if ok_bit32 then _bit = mod32 end
+-- Portable byte-wise operations for the standalone Lua test matrix.
+local function bxor(a,b)
+    local result, bit = 0, 1
+    for _ = 1,8 do
+        local left, right = a % 2, b % 2
+        result = result + (left + right - 2 * left * right) * bit
+        a, b, bit = math.floor(a/2), math.floor(b/2), bit*2
+    end
+    return result
 end
-local bxor, bor
-if _bit then
-    bxor = _bit.bxor
-    bor = _bit.bor
-else
-    -- Lua 5.3+ 原生位运算 / Lua 5.3+ native bitwise operators
-    -- 使用 load 加载避免语法错误 / Use load to avoid syntax errors on Lua 5.1
-    local _xor_ok, _xor_fn = pcall(load, "return function(a, b) return a ~ b end")
-    local _bor_ok, _bor_fn = pcall(load, "return function(a, b) return a | b end")
-    bxor = (_xor_ok and _xor_fn) and _xor_fn() or nil
-    bor = (_bor_ok and _bor_fn) and _bor_fn() or nil
-end
+local function bor(a,b) return (a + b + bxor(a,b)) / 2 end
 
 local BaseModel = require("models.base_model")
 local _M = setmetatable({}, {__index = BaseModel})
 _M.__index = _M
 
--- 加密密钥（生产环境应从配置注入）/ Encryption key
-local encryption_key = "linklet-default-key-change-me"
-
---- 设置加密密钥 / Set encryption key
--- @param key 加密密钥（十六进制或字符串）
+local Crypto = require("lib.crypto")
 function _M.set_encryption_key(key)
-    encryption_key = key
+    Crypto.configure(key)
 end
 
 function _M.new(db)
@@ -51,7 +39,8 @@ end
 -- @param secret_key 秘密密钥（明文，将被加密存储）
 -- @return row or nil, err
 function _M:create(tenant_id, access_key, secret_key)
-    local encrypted_sk = _M._encrypt(secret_key)
+    local encrypted_sk, eerr = _M._encrypt(secret_key)
+    if not encrypted_sk then return nil, eerr end
     local sql = "INSERT INTO sl_tenant_credential " ..
         "(tenant_id, access_key, secret_key_enc, status) " ..
         "VALUES ($1, $2, $3, 1) RETURNING id, tenant_id, access_key, status, created_at"
@@ -66,7 +55,8 @@ end
 -- @param access_key 访问密钥
 -- @return row (含解密后的 secret_key) or nil
 function _M:find_by_access_key(access_key)
-    local sql = "SELECT * FROM sl_tenant_credential WHERE access_key = $1 AND status = 1 LIMIT 1"
+    local sql = [[SELECT c.* FROM sl_tenant_credential c JOIN sl_tenant t ON t.id = c.tenant_id
+        WHERE c.access_key = $1 AND c.status = 1 AND t.status = 1 LIMIT 1]]
     local res, err = self.db:query(sql, access_key)
     if not res then
         return nil, err
@@ -77,7 +67,9 @@ function _M:find_by_access_key(access_key)
     local row = res[1]
     -- 解密 SK
     if row.secret_key_enc then
-        row.secret_key = _M._decrypt(row.secret_key_enc)
+        local secret, derr = _M._decrypt(row.secret_key_enc)
+        if not secret then return nil, derr end
+        row.secret_key = secret
         row.secret_key_enc = nil  -- 不返回加密字段
     end
     return row
@@ -105,7 +97,8 @@ function _M.verify_signature(secret_key, string_to_sign, signature)
         return false
     end
     -- 优先使用 ngx.hmac_sha1（OpenResty 环境）
-    local ngx_ok, ngx = pcall(require, "ngx")
+    local ngx = ngx
+    local ngx_ok = ngx ~= nil
     if ngx_ok and ngx.hmac_sha1 then
         local computed = ngx.hmac_sha1(secret_key, string_to_sign)
         -- 比较（使用恒定时间比较防止时序攻击）
@@ -116,52 +109,8 @@ function _M.verify_signature(secret_key, string_to_sign, signature)
     return false
 end
 
---- 简易加密 / Simple encryption (XOR-based, for demo)
--- 生产环境应使用 AES-256-CBC 或 PostgreSQL pgcrypto
-function _M._encrypt(plaintext)
-    local result = {}
-    for i = 1, #plaintext do
-        local key_char = string.byte(encryption_key, ((i - 1) % #encryption_key) + 1)
-        local pt_char = string.byte(plaintext, i)
-        result[#result + 1] = string.char(bxor(pt_char, key_char))
-    end
-    -- Base64 编码
-    local ngx_ok, ngx = pcall(require, "ngx")
-    if ngx_ok and ngx.encode_base64 then
-        return ngx.encode_base64(table.concat(result))
-    end
-    -- 后备：十六进制编码
-    local hex = ""
-    for _, c in ipairs(result) do
-        hex = hex .. string.format("%02x", string.byte(c))
-    end
-    return hex
-end
-
---- 简易解密 / Simple decryption (XOR-based, for demo)
-function _M._decrypt(ciphertext)
-    local ngx_ok, ngx = pcall(require, "ngx")
-    local decoded
-    if ngx_ok and ngx.decode_base64 then
-        decoded = ngx.decode_base64(ciphertext)
-        if not decoded then
-            -- 尝试十六进制解码
-            decoded = _M._hex_decode(ciphertext)
-        end
-    else
-        decoded = _M._hex_decode(ciphertext)
-    end
-    if not decoded then
-        return nil
-    end
-    local result = {}
-    for i = 1, #decoded do
-        local key_char = string.byte(encryption_key, ((i - 1) % #encryption_key) + 1)
-        local ct_char = string.byte(decoded, i)
-        result[#result + 1] = string.char(bxor(ct_char, key_char))
-    end
-    return table.concat(result)
-end
+_M._encrypt = Crypto.encrypt
+_M._decrypt = Crypto.decrypt
 
 --- 十六进制解码 / Hex decode
 function _M._hex_decode(hex)
@@ -186,6 +135,11 @@ function _M._constant_time_compare(a, b)
     end
     if #a ~= #b then
         return false
+    end
+    if ngx then
+        local ffi = require("ffi")
+        ffi.cdef("int CRYPTO_memcmp(const void *a, const void *b, size_t len);")
+        return ffi.C.CRYPTO_memcmp(a,b,#a) == 0
     end
     local result = 0
     for i = 1, #a do

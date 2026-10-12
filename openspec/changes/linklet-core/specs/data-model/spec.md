@@ -2,13 +2,13 @@
 
 ### Requirement: Five core tables
 
-The system SHALL maintain five core tables: sl_link, sl_tenant, sl_scene, sl_domain_entry, sl_scene_config.
+The system SHALL maintain five domain tables: sl_link, sl_tenant, sl_scene, sl_domain_entry, sl_scene_config, plus sl_tenant_credential and sl_id_sequence (seven physical tables).
 
 #### Scenario: Tables exist after migration
 
 - **GIVEN** the database migration has been applied
 - **WHEN** the database schema is inspected
-- **THEN** all five tables SHALL exist with their defined columns and constraints
+- **THEN** all seven tables SHALL exist with their defined columns and constraints
 
 ### Requirement: Short link table structure
 
@@ -62,3 +62,13 @@ The system SHALL NOT allow re-enabling a disabled link or reusing a deleted link
 - **GIVEN** a link was deleted (logical delete with status=deleted or deleted_at set)
 - **WHEN** a new link is created with the same code
 - **THEN** the database unique constraint SHALL prevent the creation
+
+### Requirement: Domain and scene ownership agree
+
+A composite foreign key SHALL prevent a scene from referencing another tenant's domain entry.
+
+#### Scenario: Foreign domain assigned to scene
+
+- **GIVEN** a domain owned by tenant B
+- **WHEN** tenant A's scene attempts to reference it
+- **THEN** PostgreSQL SHALL reject the write

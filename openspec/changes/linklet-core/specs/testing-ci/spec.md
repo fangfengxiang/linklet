@@ -14,7 +14,7 @@ The system SHALL have unit tests written in BDD style using the busted framework
 
 - **GIVEN** all unit tests pass
 - **WHEN** luacov generates the coverage report
-- **THEN** the overall coverage SHALL meet or exceed 80%
+- **THEN** the combined unit and real OpenResty source coverage SHALL meet or exceed 80%
 
 ### Requirement: LuaRocks package
 
@@ -90,3 +90,19 @@ The system SHALL have end-to-end tests covering the full resolution flow.
 - **WHEN** the same short code is resolved again
 - **THEN** the cache SHALL be hit
 - **AND** the database SHALL NOT be queried
+
+### Requirement: Test::Nginx runtime acceptance
+
+Acceptance SHALL run Test::Nginx::Socket::Lua against real OpenResty and a disposable PostgreSQL database. CI SHALL propagate every failure.
+
+#### Scenario: Real service lifecycle
+
+- **GIVEN** the acceptance Compose stack
+- **WHEN** Test::Nginx sends create, resolve, cache hit, disable and expiry requests
+- **THEN** the specified HTTP responses and database effects SHALL be verified
+
+#### Scenario: Assertion fails in CI
+
+- **GIVEN** a failing runtime assertion
+- **WHEN** the acceptance job runs
+- **THEN** its exit code SHALL be nonzero without an ignore-failure fallback

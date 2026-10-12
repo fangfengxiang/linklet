@@ -6,13 +6,13 @@
 
 ## What Changes
 
-- **新增短码生成模块**：黄金比例混淆（`0x9E377B97F4A7C15`）+ Base62 编码，生成 ≥6 位不可预测短码
+- **新增短码生成模块**：黄金比例混淆（`0x9E3779B9`，精确 32 位模乘）+ Base62 编码，生成 ≥6 位非连续短码
 - **新增发号器模块**：PostgreSQL 号段批量分配，Worker 本地消耗，支持多 Pod 并发安全
 - **新增解析网关**：`ngx.shared.DICT` 缓存 → PostgreSQL 回源 → HTTP 302 跳转
 - **新增管理 API**：`POST /shorten/create`、`POST /shorten/gen`、`PUT /shorten/disable`，统一 JSON 响应
 - **新增多租户鉴权**：AK/SK + HMAC 签名，SK 加密存储，认证只做一次
-- **新增数据模型**：5 张核心表（sl_link, sl_tenant, sl_scene, sl_domain_entry, sl_scene_config），关联链 短链→场景→域名记录→租户
-- **新增基础设施**：pgmoon 连接池封装、ngx.shared.DICT 缓存封装、Router + Middleware + Handler 架构
+- **新增数据模型**：5 张领域表（sl_link, sl_tenant, sl_scene, sl_domain_entry, sl_scene_config）+ 凭证表与号段表，共 7 张表，关联链 短链→场景→域名记录→租户
+- **新增基础设施**：pgmoon cosocket keepalive 连接池封装、ngx.shared.DICT 缓存封装、Router + Middleware + Handler 架构
 - **新增测试体系**：busted BDD 单元测试 + 功能测试 + E2E 测试 + 基准测试
 - **新增 CI/CD**：GitHub Actions（luacheck + busted + coverage + Docker 构建 + 镜像推送）
 - **新增部署**：Dockerfile（OpenResty 基础镜像）+ Kubernetes YAML
@@ -21,12 +21,12 @@
 
 ### New Capabilities
 
-- `short-code-gen`: 短码生成算法——黄金比例混淆 + Base62 编码，保证 ≥6 位、不可预测、全局唯一（数据库约束兜底）
+- `short-code-gen`: 短码生成算法——黄金比例混淆 + Base62 编码，保证 ≥6 位、非连续、全局唯一（数据库约束兜底）
 - `id-generator`: 发号器——PostgreSQL 号段批量分配，Worker 本地消耗，多 Pod 并发安全，允许跳号
 - `resolution-gateway`: 解析网关——缓存优先（ngx.shared.DICT）→ 数据库回源 → 状态/过期检查 → HTTP 302 跳转
 - `management-api`: 管理 API——短链创建/生成/停用，统一 JSON 响应格式，场景授权校验
 - `tenant-auth`: 多租户鉴权——AK/SK + HMAC 签名，SK 加密存储，认证一次后请求上下文传递
-- `data-model`: 数据模型——5 张核心表，关联链隔离，短码全局唯一，状态不可逆，域名记录不可修改
+- `data-model`: 数据模型——5 张领域表 + 2 张支撑表，关联链隔离，短码全局唯一，状态不可逆，域名记录不可修改
 - `infrastructure`: 基础设施——pgmoon 连接池、缓存封装、Router/Middleware/Handler、统一响应/请求工具
 - `testing-ci`: 测试与 CI/CD——busted BDD、luacov 覆盖率、luacheck lint、GitHub Actions 全流程、Docker/K8s 部署
 
@@ -39,9 +39,9 @@
 - **新增代码**：`src/` 下全部 Lua 源码（~15 模块），`spec/` 下 BDD 测试，`test/` 下 E2E/基准测试
 - **新增配置**：nginx.conf、conf.d/default.conf、.luacheckrc、rockspec、Dockerfile、K8s YAML
 - **依赖**：pgmoon（PostgreSQL 驱动）、lua-cjson（JSON 编解码）、busted（测试）、luacov（覆盖率）、luacheck（lint）
-- **数据库**：PostgreSQL，5 张表 + 迁移脚本
+- **数据库**：PostgreSQL，7 张表 + 初始/增量/回滚迁移脚本
 - **运行时**：OpenResty（ngx.socket, ngx.shared.DICT, cosocket）
-- **CI/CD**：GitHub Actions（test.yml, benchmark.yml, docs.yml, release.yml）
+- **CI/CD**：GitHub Actions（test.yml（含 Test::Nginx 验收）, benchmark.yml, docs.yml, release.yml）
 
 ### Rollback Plan
 
@@ -49,3 +49,13 @@
 - 数据库回滚：迁移脚本提供 down 版本（DROP TABLE）
 - 部署回滚：K8s `kubectl rollout undo deployment/linklet`
 - 镜像回滚：使用前一版本 image tag
+
+## Acceptance alignment (2026-10-13)
+
+- 用户确认保留 32 位容量：正整数 ID 范围为 1..4294967295，超限拒绝；禁止回绕和复用。
+- 混淆用于分散连续 ID，不提供密码学不可预测性；短链是公开标识，不是授权令牌。
+- API 的规范路径为 `/api/v1/shorten/*` 和 `/api/v1/admin/*`。
+- 验收使用 Test::Nginx::Socket::Lua、真实 OpenResty、真实 PostgreSQL。busted 保留为补充单元测试。
+- 同实例停用立即删除共享缓存；独立实例通过数据库修订号同步。默认轮询 0.5 秒，缓存同步新鲜度窗口为 1 秒，过期则绕过缓存。正在执行的解析请求可以完成。
+- 状态约束、跨租户域名关联、域名和短链不可变性由增量迁移 `003_integrity.sql` 保护。
+- SK 使用随机 nonce 的 AES-256-GCM `v1:` 密文；生产必须配置 64 位十六进制密钥，旧 XOR 凭证必须重新签发。

@@ -22,6 +22,8 @@ function _M.new(opts)
     local self = setmetatable({}, _M)
     self.db = opts.db
     self.segment_size = opts.segment_size or 1000
+    assert(type(self.segment_size) == "number" and self.segment_size >= 1 and
+        self.segment_size <= 1000000 and self.segment_size == math.floor(self.segment_size), "invalid segment size")
     self.sequence_table = opts.sequence_table or "sl_id_sequence"
     self.segment_start = nil
     self.segment_end = nil
@@ -34,14 +36,14 @@ end
 -- @return true or nil, err
 function _M:_allocate_segment()
     local sql = "UPDATE " .. self.sequence_table ..
-        " SET current_max = current_max + $1 WHERE id = 1" ..
-        " RETURNING current_max - $1 AS segment_start, current_max AS segment_end"
+        " SET current_max = current_max + $1 WHERE id = 1 AND current_max <= 4294967295 - $1" ..
+        " RETURNING (current_max - $1 + 1)::text AS segment_start, current_max::text AS segment_end"
     local res, err = self.db:query(sql, self.segment_size)
     if not res then
         return nil, "failed to allocate segment: " .. tostring(err)
     end
     if not res[1] then
-        return nil, "no rows returned from sequence table"
+        return nil, "sequence missing or short-code ID space exhausted"
     end
     local row = res[1]
     self.segment_start = tonumber(row.segment_start) or tonumber(row[1])
@@ -57,15 +59,33 @@ end
 -- 本地段段耗尽时自动从数据库分配新段
 -- @return id 整数 or nil, err
 function _M:next_id()
-    -- 检查本地段是否可用
+    if self.cursor and self.cursor <= self.segment_end then
+        local id = self.cursor
+        self.cursor = id + 1
+        return id
+    end
+    -- A worker can yield while reserving a segment. Serialize that path and
+    -- recheck after acquiring the semaphore; ordinary local consumption never yields.
+    local semaphore
+    if ngx and ngx.req then
+        if not self.semaphore then
+            self.semaphore = assert(require("ngx.semaphore").new(1))
+        end
+        semaphore = self.semaphore
+        local ok, err = semaphore:wait(10)
+        if not ok then return nil, err end
+    end
     if not self.cursor or self.cursor > self.segment_end then
-        local ok, err = self:_allocate_segment()
+        local called, ok, err = pcall(self._allocate_segment, self)
+        if not called then err, ok = ok, nil end
         if not ok then
+            if semaphore then semaphore:post(1) end
             return nil, err
         end
     end
     local id = self.cursor
-    self.cursor = self.cursor + 1
+    self.cursor = id + 1
+    if semaphore then semaphore:post(1) end
     return id
 end
 
@@ -80,7 +100,7 @@ end
 -- @return table {start, end, cursor, remaining}
 function _M:status()
     local remaining = 0
-    if self.cursor and self.segment_end then
+    if self.cursor and self.segment_end and self.cursor <= self.segment_end then
         remaining = math.max(0, self.segment_end - self.cursor + 1)
     end
     return {

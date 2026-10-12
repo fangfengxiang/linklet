@@ -1,42 +1,28 @@
-.PHONY: test lint coverage build clean install
-
-LUA_VERSION ?= 5.1
+.PHONY: install lint test acceptance acceptance-docker e2e coverage benchmark build docs-check
 LUAROCKS ?= luarocks
 BUSTED ?= busted
 LUACOV ?= luacov
 LUACHECK ?= luacheck
-
 install:
-	$(LUAROCKS) make --local 2>/dev/null || true
-
+	$(LUAROCKS) make --local
 lint:
 	$(LUACHECK) src/ spec/ --codes
-
 test:
-	$(BUSTED) spec/ --pattern="_spec"
-
+	$(BUSTED) spec/
+acceptance:
+	bash scripts/test_nginx.sh
+acceptance-docker:
+	docker compose -p linklet-acceptance -f deploy/acceptance-compose.yml up --build --abort-on-container-exit --exit-code-from acceptance
+e2e: acceptance
 coverage:
-	$(BUSTED) spec/ -c "luacov"
+	: > luacov.stats.out
+	$(BUSTED) spec/ --coverage
+	LINKLET_COVERAGE=1 bash scripts/test_nginx.sh
 	$(LUACOV) src/
-	@cat luacov.report.out | grep -E "^Total|src/"
-	@THRESHOLD=80; COV=$$(grep "^Total" luacov.report.out | awk '{print $$NF}' | tr -d '%'); \
-	if [ -z "$$COV" ]; then echo "Coverage: unable to parse"; exit 1; fi; \
-	if [ $$(echo "$$COV >= $$THRESHOLD" | bc) -eq 1 ]; then \
-		echo "✓ Coverage $$COV% >= $$THRESHOLD%"; \
-	else \
-		echo "✗ Coverage $$COV% < $$THRESHOLD%"; exit 1; \
-	fi
-
-e2e:
-	$(BUSTED) test/e2e/ --pattern="_spec"
-
+	python3 scripts/check_coverage.py
 benchmark:
-	lua test/benchmark/obfuscator_bench.lua
-
+	LUA_PATH='src/?.lua;;' lua test/benchmark/obfuscator_bench.lua
 build:
-	docker build -t linklet:latest .
-
-clean:
-	rm -f luacov.stats.out luacov.report.out
-
-all: lint test coverage
+	docker build --target runtime -t linklet:latest .
+docs-check:
+	python3 scripts/check_docs.py

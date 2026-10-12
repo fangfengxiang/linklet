@@ -1,0 +1,76 @@
+# Isolated, disposable test database. No host production volumes or ports.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: linklet_test
+      POSTGRES_USER: linklet
+      POSTGRES_PASSWORD: acceptance_only
+    volumes:
+      - ../migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ../migrations/003_integrity.sql:/docker-entrypoint-initdb.d/003_integrity.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linklet -d linklet_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  runtime-a:
+    build:
+      context: ..
+      target: runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: linklet_test
+      PGUSER: linklet
+      PGPASSWORD: acceptance_only
+      LINKLET_ENCRYPTION_KEY: abababababababababababababababababababababababababababababababab
+      CACHE_SYNC_INTERVAL: 0.5
+  runtime-b:
+    build:
+      context: ..
+      target: runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: linklet_test
+      PGUSER: linklet
+      PGPASSWORD: acceptance_only
+      LINKLET_ENCRYPTION_KEY: abababababababababababababababababababababababababababababababab
+      CACHE_SYNC_INTERVAL: 0.5
+  acceptance:
+    build:
+      context: ..
+      target: acceptance
+    depends_on:
+      postgres:
+        condition: service_healthy
+      runtime-a:
+        condition: service_healthy
+      runtime-b:
+        condition: service_healthy
+    # Test::Nginx binds its own servers inside the shared test network namespace.
+    network_mode: service:postgres
+    volumes:
+      - ../src:/app/src:ro
+      - ../conf:/app/conf:ro
+      - ../spec:/app/spec:ro
+      - ../test:/app/test:ro
+      - ../scripts:/app/scripts:ro
+      - ../migrations:/app/migrations:ro
+      - ../docs:/app/docs:ro
+      - ../openspec:/app/openspec:ro
+      - ../README.md:/app/README.md:ro
+      - ../linklet-scm-1.rockspec:/app/linklet-scm-1.rockspec:ro
+      - ../.busted:/app/.busted:ro
+      - ../.luacov:/app/.luacov:ro
+      - ../.luacheckrc:/app/.luacheckrc:ro
+    environment:
+      LINKLET_TEST_PGPORT: 5432
+    command: ["bash", "scripts/acceptance_all.sh"]

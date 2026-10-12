@@ -4,16 +4,18 @@
 local Obfuscator = require("lib.obfuscator")
 
 local function bench(name, fn, iterations)
-    iterations = iterations or 100000
+    iterations = iterations or 1000000
     local start = os.clock()
+    local sink
     for _ = 1, iterations do
-        fn()
+        sink = fn()
     end
     local elapsed = os.clock() - start
     local ops_per_sec = iterations / elapsed
     local us_per_op = (elapsed * 1e6) / iterations
     print(string.format("%-40s %10d ops/s  %8.2f us/op  (%d iterations in %.3fs)",
         name, math.floor(ops_per_sec), us_per_op, iterations, elapsed))
+    assert(sink ~= nil)
 end
 
 -- 预热 / Warmup
@@ -28,20 +30,23 @@ print("")
 
 local id = 1
 bench("obfuscate()", function()
-    Obfuscator.obfuscate(id)
+    local value = Obfuscator.obfuscate(id)
     id = id + 1
+    return value
 end)
 
 id = 1
 bench("encode_base62()", function()
-    Obfuscator.encode_base62(id * 2654435769 % 4294967296 + 916132832)
+    local value = Obfuscator.encode_base62(Obfuscator.obfuscate(id))
     id = id + 1
+    return value
 end)
 
 id = 1
 bench("generate() (full pipeline)", function()
-    Obfuscator.generate(id)
+    local value = Obfuscator.generate(id)
     id = id + 1
+    return value
 end)
 
 -- 碰撞测试 / Collision test
@@ -58,6 +63,7 @@ for i = 1, 1000000 do
     seen[code] = true
 end
 local elapsed = os.clock() - start
+assert(collisions == 0, "short code collisions detected")
 print(string.format("Range: 1-1000000, Collisions: %d, Time: %.3fs", collisions, elapsed))
 
 print("")

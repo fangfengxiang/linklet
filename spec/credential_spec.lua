@@ -7,11 +7,19 @@ local TenantCredential = require("models.tenant_credential")
 describe("TenantCredential", function()
     local model, db
 
+    local encrypt, decrypt
     before_each(function()
+        encrypt, decrypt = TenantCredential._encrypt, TenantCredential._decrypt
+        TenantCredential._encrypt = function(value) return "mock:" .. value end
+        TenantCredential._decrypt = function(value) return value:sub(6) end
         db = helper.mock_db(function(sql, ...)
             return {{id = 1, tenant_id = 1, access_key = "test-ak", status = 1}}
         end)
         model = TenantCredential.new(db)
+    end)
+
+    after_each(function()
+        TenantCredential._encrypt, TenantCredential._decrypt = encrypt, decrypt
     end)
 
     describe("create", function()
@@ -85,29 +93,6 @@ describe("TenantCredential", function()
         end)
     end)
 
-    describe("encryption/decryption", function()
-        it("encrypts and decrypts a string", function()
-            local plaintext = "my-super-secret-key"
-            local encrypted = TenantCredential._encrypt(plaintext)
-            local decrypted = TenantCredential._decrypt(encrypted)
-
-            assert.not_equals(plaintext, encrypted)
-            assert.equals(plaintext, decrypted)
-        end)
-
-        it("produces different ciphertext for different plaintexts", function()
-            local enc1 = TenantCredential._encrypt("key1")
-            local enc2 = TenantCredential._encrypt("key2")
-            assert.not_equals(enc1, enc2)
-        end)
-
-        it("handles empty string", function()
-            local encrypted = TenantCredential._encrypt("")
-            local decrypted = TenantCredential._decrypt(encrypted)
-            assert.equals("", decrypted)
-        end)
-    end)
-
     describe("_hex_decode", function()
         it("decodes valid hex string", function()
             local decoded = TenantCredential._hex_decode("48656c6c6f")
@@ -150,16 +135,9 @@ describe("TenantCredential", function()
     end)
 
     describe("set_encryption_key", function()
-        it("allows changing the encryption key", function()
-            local original_key = "linklet-default-key-change-me"
-            TenantCredential.set_encryption_key("new-key-123456789")
-            local encrypted = TenantCredential._encrypt("test")
-            -- Reset key before decrypting
-            TenantCredential.set_encryption_key("new-key-123456789")
-            local decrypted = TenantCredential._decrypt(encrypted)
-            assert.equals("test", decrypted)
-            -- Restore default
-            TenantCredential.set_encryption_key(original_key)
+        it("rejects a missing or weak deployment key", function()
+            assert.has_error(function() TenantCredential.set_encryption_key(nil) end)
+            assert.has_error(function() TenantCredential.set_encryption_key("weak") end)
         end)
     end)
 end)

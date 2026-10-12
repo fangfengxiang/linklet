@@ -46,6 +46,7 @@ local router = nil
 -- @param config 配置表
 function _M.init(config)
     config = config or {}
+    TenantCredential.set_encryption_key(config.encryption_key or os.getenv("LINKLET_ENCRYPTION_KEY"))
 
     -- 数据库 / Database
     local db = Database.new(config.database or {
@@ -58,6 +59,7 @@ function _M.init(config)
 
     -- 缓存 / Cache
     local cache = Cache.new(config.cache_dict or "linklet_cache")
+    local sync = require("lib.cache_sync").new(db, cache, config.cache_sync_interval or 0.5)
 
     -- 发号器 / ID Generator
     local id_generator = IdGenerator.new({
@@ -78,6 +80,9 @@ function _M.init(config)
         target_url = {required = true, type = "string", max_len = 2048},
         scene_id = {required = true, type = "number"},
         code = {required = false, type = "string", max_len = 20},
+    })
+    local disable_validate = ValidateMiddleware.new_with_rules({
+        code = {required = true, type = "string", max_len = 20},
     })
     local auth_mw = AuthMiddleware.new(credential_model)
 
@@ -109,6 +114,7 @@ function _M.init(config)
     deps = {
         db = db,
         cache = cache,
+        cache_sync = sync,
         id_generator = id_generator,
         link_model = link_model,
         scene_model = scene_model,
@@ -119,6 +125,7 @@ function _M.init(config)
         auth = auth_mw,
         json = json_mw,
         validate = validate_mw,
+        disable_validate = disable_validate,
         shorten_handler = shorten_handler,
         cache_handler = cache_handler,
         resolve_handler = resolve_handler,
@@ -133,6 +140,16 @@ function _M.init(config)
     return deps
 end
 
+function _M.init_worker()
+    assert(deps.cache_sync:start())
+end
+
+function _M.health()
+    local rows = deps.db:query("SELECT 1 AS ready")
+    if not rows then ngx.status = 503; ngx.say("unavailable"); return end
+    ngx.say("ok")
+end
+
 --- 处理请求 / Handle request
 -- 在 OpenResty content_by_lua 阶段调用
 function _M.handle_request()
@@ -140,7 +157,8 @@ function _M.handle_request()
         _M.init()
     end
 
-    local ngx_ok, ngx = pcall(require, "ngx")
+    local ngx = ngx
+    local ngx_ok = ngx ~= nil
 
     -- 每请求新建 Response 实例 / New Response per request
     local response = Response.new()
@@ -178,7 +196,7 @@ function _M.handle_request()
 
     -- 中间件链返回 nil, err 时 / Middleware chain returned error
     -- 如果响应已发送（如 not_found/error_response），不再重复发送
-    if not result and ngx_ok and not ngx.headers_sent then
+    if not result and ngx_ok and not response.sent and not ngx.headers_sent then
         if ctx.auth_error then
             -- 认证失败 / Auth failed
             ngx.status = 401

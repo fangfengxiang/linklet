@@ -25,7 +25,9 @@ end
 -- @param body 表（将被 JSON 编码）
 -- @return true
 function _M:json(status, body)
-    local ngx_ok, ngx = pcall(require, "ngx")
+    self.sent = true
+    local ngx = ngx
+    local ngx_ok = ngx ~= nil
     if ngx_ok then
         ngx.status = status
         ngx.header["Content-Type"] = "application/json; charset=utf-8"
@@ -64,7 +66,7 @@ function _M:error_response(code, message, status)
     return self:json(status, {
         code = code,
         message = message,
-        data = nil,  -- JSON null
+        data = cjson and cjson.null or nil,
     })
 end
 
@@ -103,7 +105,7 @@ function _M._encode_json(val)
     elseif t == "number" then
         return tostring(val)
     elseif t == "string" then
-        return '"' .. val:gsub('"', '\\"') .. '"'
+        return '"' .. val:gsub('[%z\1-\31\\"]', function(c) return string.format('\\u%04x', string.byte(c)) end) .. '"'
     elseif t == "table" then
         -- 检查是否是数组 / check if array
         local is_array = true

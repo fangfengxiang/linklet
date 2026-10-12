@@ -1,186 +1,62 @@
 # Linklet
 
-> A multi-tenant short link system built on OpenResty + Lua + PostgreSQL.
+基于 OpenResty + Lua + PostgreSQL 的自托管多租户短链服务。
 
-[![Test](https://github.com/frank/linklet/actions/workflows/test.yml/badge.svg)](https://github.com/frank/linklet/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+- 创建、生成完整 URL、不可逆停用短链。
+- AK/SK HMAC 鉴权，AES-256-GCM 加密存储 SK。
+- 按场景隔离租户，关联域名入口。
+- PostgreSQL 号段分配，32 位精确混淆与 Base62 短码。
+- 缓存优先解析，状态与过期检查，HTTP 302 跳转。
+- Test::Nginx 在真实 OpenResty/PostgreSQL 中验收。
 
-## Overview
+正整数 ID 容量为 4294967295，超限拒绝，不回绕。混淆算法可逆，短码不是授权令牌。
 
-Linklet is a self-hosted short link service that provides:
+## 启动
 
-- **Short code generation** — Golden ratio obfuscation + Base62 encoding (≥6 chars, non-predictable)
-- **Segment-based ID allocation** — PostgreSQL batch allocation, worker-local consumption
-- **Cache-first resolution** — `ngx.shared.DICT` → PostgreSQL → HTTP 302 redirect
-- **Management API** — Create / generate / disable short links with unified JSON response
-- **Multi-tenant auth** — AK/SK + HMAC signature, encrypted SK storage
-- **Scene-based domain management** — Link → Scene → Domain Entry → Tenant isolation chain
-
-## Architecture
-
-```
-HTTP Request
-    ↓
-Nginx (OpenResty)
-    ↓
-Router → Middleware Chain (auth, validate, json)
-    ↓
-Handler (shorten/handler, cache_handler, resolve_handler, redirect_handler)
-    ↓
-Model Layer (link, scene, domain_entry, tenant, tenant_credential)
-    ↓
-Infrastructure (pgmoon pool, ngx.shared.DICT cache)
+```sh
+export LINKLET_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+docker compose -f deploy/docker-compose.yml up --build -d
+curl -f http://127.0.0.1:8080/health
 ```
 
-### Core Modules
+加密密钥必须妥善保存，已有数据库需按 [部署指南](docs/deployment.md) 应用增量迁移。启动不会重置 ID 或注入测试凭证。
 
-| Module | File | Responsibility |
-|--------|------|----------------|
-| Obfuscator | `src/lib/obfuscator.lua` | Golden ratio obfuscation + Base62 encoding |
-| ID Generator | `src/lib/id_generator.lua` | Segment-based ID allocation from PostgreSQL |
-| Database | `src/lib/database.lua` | pgmoon connection pool wrapper |
-| Cache | `src/lib/cache.lua` | ngx.shared.DICT wrapper |
-| Router | `src/router.lua` | Route matching + middleware chain |
-| Auth | `src/middleware/auth.lua` | AK/SK HMAC verification |
-| Handler | `src/shorten/handler.lua` | Create / gen / disable endpoints |
-| Resolve | `src/shorten/resolve_handler.lua` | DB query + status/expiry validation + cache write |
+## API
 
-## Quick Start
+| 方法 | 路径 | 功能 |
+|---|---|---|
+| GET | `/:code` | 解析并跳转 |
+| POST | `/api/v1/shorten/create` | 创建短码 |
+| POST | `/api/v1/shorten/gen` | 创建完整短链 |
+| PUT | `/api/v1/shorten/disable` | 停用所属租户短链 |
+| POST / GET | `/api/v1/admin/tenant/create`、`/list` | 租户管理 |
+| POST / PUT | `/api/v1/admin/credential/create`、`/disable` | 凭证管理 |
+| GET | `/health`、`/health/live` | 就绪与存活检查 |
 
-### Prerequisites
+管理后台默认仅允许 loopback。业务 API 需要签名；详细字段与示例见 [API 文档](docs/api.md)。
 
-- OpenResty 1.21+ (or Nginx + LuaJIT)
-- PostgreSQL 12+
-- LuaRocks
+## 验收
 
-### Install
-
-```bash
-luarocks make --local
+```sh
+make acceptance-docker  # 独立 OpenResty + PostgreSQL + Test::Nginx
+make test               # 补充单元测试
+make lint
 ```
 
-### Database Setup
+完整的需求、问题、测试案例对应关系见 [验收记录](docs/acceptance.md)。合并源码覆盖率门槛为 80%；CI 不忽略失败。
 
-```bash
-psql -U postgres -f migrations/001_init.sql
-```
+## 目录
 
-### Run with Docker
+| 目录 | 内容 |
+|---|---|
+| src/ | 入口、路由、中间件、handler、模型和基础设施 |
+| conf/ | Nginx 生产配置与共享 locations |
+| migrations/ | 初始、增量、测试数据和回滚 SQL |
+| spec/ | busted 单元测试 |
+| test/nginx/ | Test::Nginx 运行时验收 |
+| test/benchmark/ | 算法与缓存微基准 |
+| deploy/ | 开发/验收 Compose、Kubernetes 模板 |
+| openspec/ | 提案、设计、能力规格和任务 |
+| docs/ | API、开发、部署、设计和验收说明 |
 
-```bash
-docker compose -f deploy/docker-compose.yml up -d
-curl http://localhost:8080/health
-```
-
-### Development
-
-```bash
-# Install test dependencies
-luarocks install busted --local
-luarocks install luacov --local
-luarocks install luacheck --local
-
-# Run tests
-busted spec/
-
-# Run lint
-luacheck src/ spec/
-
-# Run benchmark
-lua test/benchmark/obfuscator_bench.lua
-```
-
-## API Reference
-
-### Resolution Gateway
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/:code` | Resolve short code and 302 redirect |
-
-### Management API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/shorten/create` | Create short link |
-| `POST` | `/shorten/gen` | Create short link with full URL |
-| `PUT` | `/shorten/disable` | Disable short link |
-
-### Request Example
-
-```bash
-curl -X POST http://localhost:8080/shorten/create \
-  -H "Content-Type: application/json" \
-  -H "X-Access-Key: your-ak" \
-  -H "X-Signature: your-signature" \
-  -H "X-Timestamp: 1697000000" \
-  -d '{"target_url":"https://example.com/page","scene_id":1}'
-```
-
-### Response Format
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "code": "aB9xK2"
-  }
-}
-```
-
-## Testing
-
-| Type | Tool | Location | Coverage |
-|------|------|----------|----------|
-| Unit (BDD) | busted | `spec/` | Algorithm, models, handlers, middleware |
-| E2E | busted | `test/e2e/` | Full resolution flow |
-| Benchmark | lua | `test/benchmark/` | Code generation throughput |
-| Lint | luacheck | — | src/ + spec/ |
-
-### CI/CD Pipeline
-
-- **test.yml** — luacheck + busted + luacov coverage (Lua 5.1, LuaJIT 2.1, Lua 5.3)
-- **benchmark.yml** — Benchmark on PR
-- **release.yml** — Tag-triggered Docker image build + GHCR push
-
-## Project Structure
-
-```
-linklet/
-├── src/
-│   ├── app.lua              # Entry point
-│   ├── router.lua           # Route matching + middleware chain
-│   ├── routes.lua           # Route definitions
-│   ├── lib/                 # Infrastructure
-│   ├── middleware/          # Auth, validate, JSON
-│   ├── shorten/             # Handlers
-│   └── models/              # Data access layer
-├── spec/                    # BDD unit tests
-├── test/                    # E2E + benchmark
-├── conf/                    # Nginx configuration
-├── migrations/              # SQL migrations
-├── deploy/                  # Docker + K8s
-├── docs/                    # Design docs + ADR
-├── .github/workflows/       # CI/CD
-├── Dockerfile
-├── Makefile
-└── linklet-scm-1.rockspec
-```
-
-## Design Decisions
-
-See `docs/design.md` for the full design document and `docs/adr.md` for the architecture decision record index.
-
-### Key Decisions
-
-1. **OpenResty native** — No extra web framework, leverage Nginx + Lua directly
-2. **Explicit DI** — Dependencies via constructor params, no Context as service locator
-3. **Cache-first** — Resolution path checks cache before database
-4. **Golden ratio obfuscation** — Non-predictable short codes with collision-free guarantee
-5. **Segment-based ID allocation** — Reduce DB access with batch segment allocation
-6. **Irreversible status** — Disabled/deleted links cannot be re-enabled
-
-## License
-
-MIT
+开发方式见 [开发指南](docs/development.md)。架构说明见 [设计文档](docs/design.md)。

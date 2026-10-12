@@ -158,7 +158,8 @@ describe("Resolution flow", function()
 
         it("returns 410 for expired link (string expires_at with ngx)", function()
             link_model.find_by_code = function()
-                return {code = "aB9xK2", target_url = "https://example.com", status = 1, expires_at = "Mon, 01 Jan 2001 00:00:00 GMT"}
+                return {code = "aB9xK2", target_url = "https://example.com",
+                        status = 1, expires_epoch = 978307200}
             end
 
             local ctx = {
@@ -169,9 +170,7 @@ describe("Resolution flow", function()
 
             resolve_handler:handle(ctx, function() end)
 
-            -- Without ngx.parse_http_time, expiration check may pass silently
-            -- The test verifies the code path is exercised
-            assert.truthy(resp._status == 410 or resp._status == 200 or ctx.resolved)
+            assert.equals(410, resp._status)
         end)
 
         it("returns 404 when code is missing from params", function()

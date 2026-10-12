@@ -38,6 +38,12 @@ function _M:create(tenant_id, name, domain_entry_id)
     end
 end
 
+function _M:find_by_id(id)
+    local rows, err = self.db:query("SELECT * FROM sl_scene WHERE scene_id=$1 LIMIT 1", id)
+    if not rows then return nil, err end
+    return rows[1]
+end
+
 --- 按 ID 查找场景（含域名入口信息）/ Find scene by ID with domain entry
 -- @param scene_id 场景 ID
 -- @return row (含 domain 和 tenant_id) or nil, err

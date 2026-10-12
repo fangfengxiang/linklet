@@ -48,7 +48,7 @@ function _M.create(deps)
     router:put("/api/v1/shorten/disable",
         deps.auth,
         deps.json,
-        deps.validate,
+        deps.disable_validate,
         function(ctx)
             return deps.shorten_handler:disable(ctx)
         end

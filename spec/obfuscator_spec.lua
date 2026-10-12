@@ -194,16 +194,14 @@ describe("Obfuscator - reverse and decode", function()
         end)
     end)
 
-    describe("_modular_inverse", function()
-        it("computes inverse for coprime values", function()
-            local inv = Obfuscator._modular_inverse(3, 7)
-            assert.truthy(inv)
-            assert.equals(5, inv % 7)  -- 3 * 5 = 15 ≡ 1 (mod 7)
-        end)
-
-        it("returns nil for non-coprime values", function()
-            local inv = Obfuscator._modular_inverse(2, 4)
-            assert.is_nil(inv)  -- 2 and 4 share factor 2
+    describe("32-bit range", function()
+        it("is exact at the upper boundary and rejects overflow", function()
+            for _, value in ipairs({4194304,100000000,2147483647,4294967295}) do
+                assert.equals(value, Obfuscator.reverse(Obfuscator.generate(value)))
+            end
+            assert.has_error(function() Obfuscator.generate(4294967296) end)
+            assert.has_error(function() Obfuscator.generate(1.5) end)
+            assert.is_nil(Obfuscator.decode_base62("ZZZZZZZZZZZZ"))
         end)
     end)
 

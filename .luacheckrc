@@ -1,4 +1,4 @@
-cache = true
+cache = false
 ignore = {
     "212/self",
     "211",
@@ -21,7 +21,7 @@ files["spec/"] = {
     },
 }
 files["src/"] = {
-    read_globals = {
+    globals = {
         "ngx",
     },
     ignore = {

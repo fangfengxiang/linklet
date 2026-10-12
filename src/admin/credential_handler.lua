@@ -18,26 +18,8 @@ function _M.new(deps)
     local self = setmetatable({}, _M)
     self.credential_model = deps.credential_model
     self.tenant_model = deps.tenant_model
+    self.crypto = deps.crypto or require("lib.crypto")
     return self
-end
-
---- 生成随机 AK / Generate random access key
-local function gen_access_key()
-    local ngx_ok, ngx = pcall(require, "ngx")
-    if ngx_ok and ngx.md5 then
-        return ngx.md5(tostring(ngx.time()) .. tostring(math.random()))
-    end
-    -- 后备 / fallback
-    return "ak-" .. tostring(os.time()) .. "-" .. tostring(math.random(1000000, 9999999))
-end
-
---- 生成随机 SK / Generate random secret key
-local function gen_secret_key()
-    local ngx_ok, ngx = pcall(require, "ngx")
-    if ngx_ok and ngx.md5 then
-        return ngx.md5(tostring(ngx.time()) .. tostring(math.random()) .. "sk")
-    end
-    return "sk-" .. tostring(os.time()) .. "-" .. tostring(math.random(1000000, 9999999))
 end
 
 --- 创建凭证 / Create credential
@@ -59,8 +41,13 @@ function _M:create(ctx)
     end
 
     -- 生成 AK/SK / Generate AK/SK
-    local access_key = params.access_key or gen_access_key()
-    local secret_key = params.secret_key or gen_secret_key()
+    local access_key = params.access_key or self.crypto.random_key()
+    local secret_key = params.secret_key or self.crypto.random_key()
+
+    if type(access_key) ~= "string" or access_key == "" or #access_key > 128 or
+        type(secret_key) ~= "string" or #secret_key < 16 or #secret_key > 256 then
+        return ctx.response:error_response(4001, "invalid access key or secret key", 400)
+    end
 
     local cred, err = self.credential_model:create(tenant_id, access_key, secret_key)
     if not cred then

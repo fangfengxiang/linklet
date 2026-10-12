@@ -24,8 +24,8 @@ GET /aB9xK2
 
 - First request: cache miss → database query → cache write → 302 redirect
 - Subsequent requests: cache hit → skip database → 302 redirect
-- Cache TTL: 300 seconds (configurable)
-- Cache invalidation: automatic on link disable
+- Cache TTL: min(300 seconds by default, remaining link lifetime)
+- Cache invalidation: immediate within the instance; independent instances synchronize durable revisions (default freshness window: 1 second). Stale synchronization bypasses cache.
 
 ---
 
@@ -39,7 +39,7 @@ All management API endpoints require AK/SK authentication headers:
 | `X-Signature` | HMAC-SHA1 signature |
 | `X-Timestamp` | Request timestamp (Unix epoch, ±5 min window) |
 
-### `POST /shorten/create`
+### `POST /api/v1/shorten/create`
 
 Create a short link. Returns the generated short code.
 
@@ -81,11 +81,11 @@ Create a short link. Returns the generated short code.
 | 404 | 4003 | scene not found or inactive |
 | 500 | 500 | internal server error |
 
-### `POST /shorten/gen`
+### `POST /api/v1/shorten/gen`
 
 Create a short link and return the full short URL (domain + code).
 
-**Request Body** — Same as `/shorten/create`
+**Request Body** — Same as `/api/v1/shorten/create`
 
 **Response**
 
@@ -106,7 +106,7 @@ Create a short link and return the full short URL (domain + code).
 |------|------------|---------|
 | 400 | 4005 | domain not configured for scene |
 
-### `PUT /shorten/disable`
+### `PUT /api/v1/shorten/disable`
 
 Disable a short link. This operation is irreversible — disabled links cannot be re-enabled.
 
@@ -147,11 +147,11 @@ Disable a short link. This operation is irreversible — disabled links cannot b
 The signature is computed as HMAC-SHA1 of the following string:
 
 ```
-{METHOD}\n{URI}\n{TIMESTAMP}\n{BODY}
+{METHOD}\n{REQUEST_URI}\n{TIMESTAMP}\n{BODY}
 ```
 
 - `METHOD`: HTTP method (GET, POST, PUT, DELETE)
-- `URI`: Request path (e.g., `/shorten/create`)
+- `REQUEST_URI`: Raw request path and query string (e.g., `/api/v1/shorten/create?scene_id=1`)
 - `TIMESTAMP`: Unix epoch from `X-Timestamp` header
 - `BODY`: Raw request body (JSON string)
 
@@ -159,7 +159,7 @@ The HMAC key is the decrypted Secret Key (SK).
 
 ### SK Storage
 
-- SK is stored encrypted in the database (`secret_key_enc` column)
+- SK uses versioned AES-256-GCM envelopes with random nonces in `secret_key_enc`. `LINKLET_ENCRYPTION_KEY` must be 64 hexadecimal characters. Legacy XOR credentials must be reissued.
 - SK is decrypted on-demand for signature verification only
 - Decrypted SK is never logged or cached
 
@@ -187,4 +187,33 @@ All management API responses follow this structure:
   "message": "<error description>",
   "data": null
 }
+```
+
+## Administration and health
+
+Admin endpoints are loopback-only by default and use the same JSON response format:
+
+| Method | Path | JSON body / parameters |
+|---|---|---|
+| POST | `/api/v1/admin/tenant/create` | `{"name":"tenant"}` |
+| GET | `/api/v1/admin/tenant/list` | optional `limit` query parameter |
+| POST | `/api/v1/admin/credential/create` | `{"tenant_id":1}`; optional access_key/secret_key |
+| PUT | `/api/v1/admin/credential/disable` | `{"access_key":"..."}` |
+
+Generated AK/SK values use cryptographic randomness. A custom SK must contain 16–256 characters. The plaintext SK is returned only when creating the credential.
+
+`GET /health` returns 200 when PostgreSQL responds, or 503 otherwise. `GET /health/live` returns 200 while the process serves requests.
+
+Only JSON objects are accepted for write requests. Timestamp is mandatory. Sign the exact query and body bytes; a valid request can still be replayed within the 300-second window, so clients must not assume exactly-once execution.
+
+### Signing example
+
+```python
+import base64, hashlib, hmac, time
+method = "POST"
+uri = "/api/v1/shorten/create"
+body = '{"target_url":"https://example.com/page","scene_id":1}'
+timestamp = str(int(time.time()))
+message = "\n".join([method, uri, timestamp, body]).encode()
+signature = base64.b64encode(hmac.new(secret_key.encode(), message, hashlib.sha1).digest()).decode()
 ```

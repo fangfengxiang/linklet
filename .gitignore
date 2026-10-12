@@ -22,3 +22,8 @@ Thumbs.db
 *~
 .idea/
 .vscode/
+
+# Local acceptance dependencies and Test::Nginx output
+.test-deps/
+servroot/
+.test-nginx/

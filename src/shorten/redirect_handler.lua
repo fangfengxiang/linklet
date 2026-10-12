@@ -24,7 +24,8 @@ function _M:handle(ctx, next)
     end
 
     -- 发送 302 重定向 / Send 302 redirect
-    local ok, ngx = pcall(require, "ngx")
+    local ngx = ngx
+    local ok = ngx ~= nil
     if ok then
         ngx.status = 302
         ngx.header["Location"] = ctx.target_url

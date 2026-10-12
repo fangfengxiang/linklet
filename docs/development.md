@@ -1,114 +1,49 @@
-# Development Guide
+# 本地开发
 
-## Prerequisites
+运行时为 OpenResty/LuaJIT，数据库为 PostgreSQL 12+。Lua 5.1/5.3 单元测试用于检查可移植逻辑，加密与 cosocket 以真实 OpenResty 为准。
 
-- Lua 5.1 / LuaJIT 2.1 / Lua 5.3+
-- LuaRocks 3.x
-- PostgreSQL 12+
-- busted, luacov, luacheck (via LuaRocks)
+## 隔离验收
 
-## Setup
+安装 Docker，执行：
 
-```bash
-# Clone the repository
-git clone https://github.com/frank/linklet.git
-cd linklet
-
-# Install dependencies
-luarocks install busted --local
-luarocks install luacov --local
-luarocks install luacheck --local
-luarocks install lua-cjson --local
-luarocks install pgmoon --local
-
-# Set up database (local PostgreSQL)
-createdb linklet
-psql -d linklet -f migrations/001_init.sql
+```sh
+make acceptance-docker
 ```
 
-## Running Tests
+验收镜像安装 Test::Nginx 0.32、busted、LuaCov 和 luacheck，并启动独立 PostgreSQL。结果和案例映射见 [acceptance.md](acceptance.md)。
 
-### Unit Tests (BDD)
+## 本机工具
 
-```bash
-busted spec/
+安装 OpenResty、Perl/prove、LuaRocks，再安装 `Test::Nginx`、pgmoon、LPeg、busted、LuaCov、luacheck。原生模块必须按 OpenResty 的 LuaJIT/Lua 5.1 ABI 编译，不能复用 Lua 5.3/5.5 的 `.so`。
+
+```sh
+cpanm Test::Nginx@0.32
+luarocks install pgmoon 1.18.0-1
+luarocks install busted
+luarocks install luacov
+luarocks install luacheck
 ```
 
-### Lint
+使用独立 `linklet_test` 数据库：用户 `linklet`、密码 `acceptance_only`、端口 15432。依次执行 `001_init.sql` 和 `003_integrity.sql`；不把测试数据脚本当成生产迁移。
 
-```bash
-luacheck src/ spec/
+```sh
+make test
+make lint
+make acceptance
+make coverage
 ```
 
-### Coverage
+源码在 `src/`，mock 单元测试在 `spec/`，真实运行时验收在 `test/nginx/`，基准在 `test/benchmark/`。
 
-```bash
-busted spec/ -c "luacov"
-luacov src/
-cat luacov.report.out
+## 变更流程
+
+修改 `openspec/changes/linklet-core/` 的需求和设计，给问题补负向验收场景，再修复实现，最后记录验收证据和任务状态。验收通过后才同步正式规格；规划文件齐全不代表功能已完成。
+
+## 基准
+
+```sh
+make benchmark
+resty --shdict 'benchmark_cache 10m' -I src test/benchmark/resolution_bench.lua
 ```
 
-Coverage threshold: 80%
-
-### Benchmark
-
-```bash
-export LUA_PATH="src/?.lua;;"
-lua test/benchmark/obfuscator_bench.lua
-```
-
-## Project Structure
-
-```
-src/
-├── app.lua                 # Application entry point
-├── router.lua              # Route matching + middleware chain
-├── routes.lua              # Route definitions
-├── lib/
-│   ├── database.lua        # pgmoon connection pool
-│   ├── cache.lua           # ngx.shared.DICT wrapper
-│   ├── request.lua         # HTTP request utilities
-│   ├── response.lua        # HTTP response utilities
-│   ├── obfuscator.lua      # Golden ratio + Base62
-│   └── id_generator.lua    # Segment-based ID allocation
-├── middleware/
-│   ├── json.lua            # JSON body parsing
-│   ├── validate.lua        # Parameter validation
-│   └── auth.lua            # AK/SK HMAC auth
-├── shorten/
-│   ├── handler.lua         # Create/gen/disable
-│   ├── cache_handler.lua   # Cache lookup
-│   ├── resolve_handler.lua # DB query + validation
-│   └── redirect_handler.lua # HTTP 302
-└── models/
-    ├── base_model.lua      # Shared query execution
-    ├── link.lua            # sl_link
-    ├── tenant.lua          # sl_tenant
-    ├── tenant_credential.lua # AK/SK
-    ├── scene.lua           # sl_scene
-    └── domain_entry.lua    # sl_domain_entry
-```
-
-## Adding a New Endpoint
-
-1. Add route in `src/routes.lua`
-2. Implement handler in `src/shorten/handler.lua`
-3. Add model method if needed in `src/models/`
-4. Write tests in `spec/`
-5. Run `luacheck src/ spec/` and `busted spec/`
-
-## Docker Development
-
-```bash
-# Start full stack
-docker compose -f deploy/docker-compose.yml up -d
-
-# View logs
-docker compose -f deploy/docker-compose.yml logs -f
-
-# Run tests in container
-docker exec -it linklet busted spec/
-
-# Cleanup
-docker compose -f deploy/docker-compose.yml down -v
-```
+这是算法和缓存 handler 微基准，不应当作线上 HTTP 吞吐或数据库性能结论。

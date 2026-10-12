@@ -52,3 +52,25 @@ The system SHALL allow gaps in ID allocation, requiring only uniqueness.
 - **WHEN** a new ID is allocated
 - **THEN** the ID SHALL be unique (never previously allocated)
 - **AND** the system SHALL NOT attempt to fill gaps
+
+### Requirement: Inclusive disjoint bounds and coroutine safety
+
+The system SHALL reserve [old_max+1,new_max] and serialize worker-local segment allocation while database I/O yields.
+
+#### Scenario: Adjacent segments
+
+- **GIVEN** segment size 2 and current_max 0
+- **WHEN** two segments are reserved and consumed
+- **THEN** the IDs SHALL be 1,2,3,4 without overlapping endpoints
+
+#### Scenario: Concurrent worker coroutines
+
+- **GIVEN** 20 coroutines share an exhausted local generator
+- **WHEN** all request an ID
+- **THEN** each SHALL receive a distinct ID
+
+#### Scenario: ID space exhausted
+
+- **GIVEN** current_max is 4294967295
+- **WHEN** a segment is requested
+- **THEN** the request SHALL fail explicitly without resetting or wrapping the sequence

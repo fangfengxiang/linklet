@@ -44,7 +44,7 @@ end
 -- @param ctx 请求上下文
 -- @return true or nil, err
 function _M:list(ctx)
-    local params = ctx.params or (ctx.request and ctx.request:all_params()) or {}
+    local params = (ctx.request and ctx.request:all_params()) or ctx.params or {}
     local limit = tonumber(params.limit) or 100
 
     local tenants, err = self.tenant_model:find_all(limit)

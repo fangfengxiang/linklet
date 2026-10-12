@@ -23,5 +23,9 @@
 | ADR-008 | 缓存使用 ngx.shared.DICT | 基础设施 | 已决 |
 | ADR-009 | AK/SK + HMAC 签名认证 | 安全 | 已决 |
 | ADR-010 | pgmoon 作为 PostgreSQL 驱动 | 基础设施 | 已决 |
-| ADR-011 | 短码生成算法碰撞修正：保留完整 64 位 | 短码算法 | 待决 |
+| ADR-011 | 短码生成算法碰撞修正：16 位分段精确实现 32 位双射，超限拒绝（用户确认） | 短码算法 | 已决 |
 | ADR-012 | Docker + Kubernetes 部署 | 部署 | 已决 |
+
+ADR-013：跨实例使用 PostgreSQL 修订号同步；默认 0.5 秒轮询，1 秒新鲜度窗口。
+
+ADR-014：Test::Nginx + 真实 PostgreSQL 为运行时验收基准，mock 测试仅作为补充。

@@ -19,19 +19,15 @@ INSERT INTO sl_scene (scene_id, tenant_id, name, domain_entry_id, status)
 VALUES (1, 1, 'E2E Test Scene', 1, 1)
 ON CONFLICT (scene_id) DO NOTHING;
 
--- 测试凭证 / Test credential
--- AK: test-access-key-001
--- SK: test-secret-key-001
--- SK 加密后存储（XOR + Base64，加密密钥: linklet-default-key-change-me）
--- 以下 SK 密文通过 Lua 在 Docker 容器内生成，这里用预计算值
--- 实际 E2E 测试中通过 API 直接注入或在容器启动时生成
-INSERT INTO sl_tenant_credential (tenant_id, access_key, secret_key_enc, status)
-VALUES (1, 'test-access-key-001', 'SEED_PLACEHOLDER', 1)
-ON CONFLICT (access_key) DO NOTHING;
+-- Credentials are created by scripts/seed_test_data.lua using the configured AES-GCM key.
 
 -- 直接插入一条已知短链用于解析测试 / Insert a known link for resolution test
 INSERT INTO sl_link (id, code, target_url, scene_id, status)
 VALUES (1001, 'e2eTest', 'https://github.com/openresty/openresty', 1, 1)
 ON CONFLICT (code) DO NOTHING;
 
+SELECT setval('sl_tenant_id_seq', (SELECT MAX(id) FROM sl_tenant));
+SELECT setval('sl_domain_entry_id_seq', (SELECT MAX(id) FROM sl_domain_entry));
+SELECT setval('sl_scene_scene_id_seq', (SELECT MAX(scene_id) FROM sl_scene));
+SELECT setval('sl_link_id_seq', (SELECT MAX(id) FROM sl_link));
 COMMIT;

@@ -7,7 +7,9 @@ local AuthMiddleware = require("middleware.auth")
 describe("AuthMiddleware", function()
     local auth_mw, mock_credential_model, resp, req
 
+    local original_verify
     before_each(function()
+        original_verify = require("models.tenant_credential").verify_signature
         mock_credential_model = {
             find_by_access_key = function(self, ak)
                 return {
@@ -26,6 +28,10 @@ describe("AuthMiddleware", function()
 
         auth_mw = AuthMiddleware.new(mock_credential_model)
         resp = helper.mock_response()
+    end)
+
+    after_each(function()
+        require("models.tenant_credential").verify_signature = original_verify
     end)
 
     describe("valid authentication", function()

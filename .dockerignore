@@ -1,0 +1,6 @@
+.git
+.claude
+.test-deps
+.test-nginx
+servroot
+luacov.*.out

@@ -1,0 +1,4 @@
+return {
+    include = {"^src/"},
+    includeuntestedfiles = {"src"},
+}

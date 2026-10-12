@@ -2,7 +2,7 @@
 
 ### Requirement: PostgreSQL connection pool
 
-The system SHALL use pgmoon's PostgresPool for coroutine-safe PostgreSQL connection management.
+The system SHALL use pgmoon's OpenResty cosocket keepalive pool for coroutine-safe PostgreSQL connection management.
 
 #### Scenario: Concurrent queries from different coroutines
 
@@ -68,4 +68,20 @@ The system SHALL provide request and response utility modules for consistent HTT
 
 - **GIVEN** a POST request with JSON body
 - **WHEN** the request utility parses the body
-- **THEN** the handler SHALL access parameters via ctx.request.params
+- **THEN** the handler SHALL access parameters via ctx.params after JSON parsing and endpoint validation
+
+### Requirement: Transaction failure and health semantics
+
+Transactions SHALL roll back exceptions and nil/false callback results. Readiness SHALL check PostgreSQL.
+
+#### Scenario: Callback returns a failure
+
+- **GIVEN** an insert executed inside a transaction
+- **WHEN** the callback returns nil and an error
+- **THEN** the insert SHALL be rolled back and the error SHALL propagate
+
+#### Scenario: Database unavailable
+
+- **GIVEN** PostgreSQL cannot be queried
+- **WHEN** /health is requested
+- **THEN** the response SHALL be 503 while /health/live SHALL remain 200

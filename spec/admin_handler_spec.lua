@@ -114,6 +114,7 @@ describe("Admin Handlers", function()
             }
             handler = CredentialHandler.new({
                 credential_model = mock_credential_model,
+                crypto = {random_key = function() return string.rep("a",64) end},
                 tenant_model = mock_tenant_model,
             })
             resp = helper.mock_response()
@@ -153,13 +154,13 @@ describe("Admin Handlers", function()
 
             it("accepts custom access_key and secret_key", function()
                 local ctx = {
-                    params = {tenant_id = 1, access_key = "custom-ak", secret_key = "custom-sk"},
+                    params = {tenant_id = 1, access_key = "custom-ak", secret_key = "custom-secret-key-32-chars"},
                     response = resp,
                 }
                 handler:create(ctx)
                 assert.equals(200, resp._status)
                 assert.equals("custom-ak", resp._body.data.access_key)
-                assert.equals("custom-sk", resp._body.data.secret_key)
+                assert.equals("custom-secret-key-32-chars", resp._body.data.secret_key)
             end)
         end)
 

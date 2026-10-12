@@ -1,243 +1,79 @@
-## Design
+# Linklet core implementation design
 
-### Architecture Overview
+## Scope and decisions
 
-Linklet follows a layered architecture with explicit dependency injection:
+OpenResty + LuaJIT + PostgreSQL, explicit constructor dependencies, no web framework or ORM.
+Canonical APIs are `/api/v1/shorten/create`, `/api/v1/shorten/gen`, `/api/v1/shorten/disable` and `/api/v1/admin/*`.
+Five domain tables plus credentials and ID sequence give seven physical tables.
 
-```
-HTTP Request
-    ↓
-Nginx (conf.d/default.conf)
-    ↓
-Router (src/router.lua) — route matching, middleware chain
-    ↓
-Middleware Chain
-    ├── auth.lua (AK/SK verification, tenant extraction)
-    ├── validate.lua (request parameter validation)
-    └── json.lua (request body JSON parsing)
-    ↓
-Handler
-    ├── shorten/handler.lua (create/gen/disable)
-    ├── shorten/cache_handler.lua (cache lookup)
-    ├── shorten/resolve_handler.lua (DB query, status check, cache write)
-    └── shorten/redirect_handler.lua (HTTP 302)
-    ↓
-Model Layer (src/models/)
-    ├── link.lua (sl_link CRUD)
-    ├── tenant.lua (sl_tenant)
-    ├── tenant_credential.lua (AK/SK)
-    ├── scene.lua (sl_scene)
-    └── domain_entry.lua (sl_domain_entry)
-    ↓
-Infrastructure (src/lib/)
-    ├── database.lua (pgmoon pool wrapper)
-    ├── cache.lua (ngx.shared.DICT wrapper)
-    ├── request.lua (HTTP request utilities)
-    └── response.lua (JSON response utilities)
-```
+## Short codes and segments
 
-### Module Design
+The user selected the 32-bit ID capacity on 2026-10-13: positive IDs 1..4294967295.
+`(id * 2654435769) mod 2^32 + 62^5` is computed with two 16-bit limbs, keeping intermediate values exact in LuaJIT.
+Base62 uses `0-9a-zA-Z` and codes have at least six characters. The permutation is reversible and is not an access-control secret.
+Existing stored codes continue to resolve; no code rewrite or sequence reset occurs during deployment.
 
-#### Short Code Generation (src/lib/obfuscator.lua)
+A reservation adds the configurable segment size atomically and returns the inclusive interval `[old_max+1,new_max]`.
+A worker-local semaphore serializes reservations while coroutine I/O yields; the fast path consumes IDs without database access.
+The reservation refuses a segment crossing the 32-bit boundary. Unused IDs are never recovered after restart.
 
-```lua
-local _M = {}
-_M.__index = _M
+## Request processing and authentication
 
-local GOLDEN_RATIO = 0x9E377B97F4A7C15  -- (√5-1)/2 × 2^64
-local BASE_OFFSET = 916132832           -- 62^5, ensures ≥6 chars
-local BASE62_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+Nginx locations route requests through auth → JSON → endpoint-specific validation → handler.
+Auth signs `METHOD\nREQUEST_URI\nTIMESTAMP\nRAW_BODY`; REQUEST_URI includes the original query string.
+Timestamp is mandatory and must be within 300 seconds. Repeated valid requests within that window are not exactly-once operations.
+Body data is read from memory or the Nginx body file before signature verification. Only JSON objects are accepted.
+Credential lookup also requires an active tenant. OpenSSL CRYPTO_memcmp compares signatures in OpenResty.
 
-function _M.obfuscate(id)
-    -- Golden ratio multiplication + segment mixing
-end
+SKs use AES-256-GCM with independent random 12-byte nonces, a 16-byte authentication tag and versioned Base64 envelopes.
+A mandatory deployment key contains 64 hexadecimal characters. Ciphertext corruption and unversioned legacy XOR records fail closed.
+New AK and SK values come from OpenSSL strong randomness. Legacy credentials must be reissued, not silently decoded with a public fallback key.
 
-function _M.encode_base62(num)
-    -- Standard Base62 encoding
-end
+## Models and management
 
-function _M.generate(id)
-    return _M.encode_base62(_M.obfuscate(id))
-end
-```
+Links contain only scene_id. Scenes provide tenant ownership; a composite foreign key guarantees scene and domain owners agree.
+Create/gen validate scene ownership. Gen also requires an active domain and returns an HTTP(S) URL.
+Disable performs a single tenant-constrained UPDATE and returns 404 for an unavailable link, including another tenant's code.
+Validation errors are 400, authentication errors 401, foreign scene errors 403; errors include JSON data:null.
+Database errors are distinguished from missing records and are not converted to 404.
 
-**Collision fix**: The original algorithm truncates to high 32 bits, losing information. The fix: use full 64-bit multiplication result, or use a modular hash function that preserves bijection within the ID space.
+Migration 003 adds status checks, terminal-state triggers, immutable domain/link guards and permanent code retention.
+Terminal statuses cannot transition backward. Domain status can advance from active to disabled to deleted.
 
-#### ID Generator (src/lib/id_generator.lua)
+## Resolution and consistency
 
-```lua
-local _M = {}
-_M.__index = _M
+CacheHandler → ResolveHandler → RedirectHandler uses ngx.shared.DICT for inter-worker cache sharing.
+The database returns expiry as EXTRACT(EPOCH FROM expires_at); cache TTL is min(configured TTL, remaining lifetime).
+Expired links return 410 on both cold and warm paths. Missing links return 404; disabled links/entities return 410.
+A shared generation counter prevents an in-flight old lookup from restoring a locally invalidated cache entry.
 
-function _M.new(opts)
-    -- opts: { db, segment_size (default 1000) }
-end
+Independent instances poll `sl_id_sequence.cache_revision` in one worker-0 timer per instance.
+Transactional status triggers advance the durable revision. A changed revision flushes positive cache entries and advances the local generation.
+Default polling is 0.5 seconds; cached data is used only while a successful revision check is at most 1 second old.
+If polling stalls or the database becomes unavailable, stale cache entries are bypassed. This defines bounded propagation, not synchronous global invalidation.
 
-function _M:next_id()
-    -- If local segment exhausted, allocate new segment from PostgreSQL
-    -- Atomic UPDATE ... RETURNING for segment reservation
-end
-```
+## Database connections
 
-**PostgreSQL segment allocation**:
-```sql
-UPDATE sl_id_sequence
-SET current_max = current_max + $1
-RETURNING current_max - $1 AS segment_start, current_max AS segment_end;
-```
+pgmoon.new receives the configuration directly. Every query/coroutine obtains its own connection object.
+Connections are returned using pgmoon:keepalive to the OpenResty cosocket pool, with pool_size/backlog and timeouts.
+SQL scalar values use escape_literal. Raw statements and decrypted secrets are not logged.
+Transactions roll back exceptions and nil/false callback results; BEGIN and COMMIT failures propagate.
 
-#### Resolution Flow
+## Deployment and testing
 
-Cache-first resolution with three handlers composed as middleware:
+Nginx explicitly preserves database and encryption environment variables and starts cache synchronization in init_worker.
+`/health` checks PostgreSQL readiness; `/health/live` checks process liveness.
+Admin locations allow loopback by default; deployments must configure narrowly scoped trusted administration access.
+Docker has dependency, runtime and acceptance stages; development Compose does not seed data or reset IDs at startup.
+Kubernetes separates Deployment/Service, ConfigMap and Secret templates; migration is a deliberate deployment step.
 
-```
-GET /:code
-    ↓
-CacheHandler (ngx.shared.DICT lookup)
-    ├── HIT → set ctx.target_url, skip to RedirectHandler
-    └── MISS → next()
-                ↓
-        ResolveHandler (DB query)
-            ├── Found + valid → set ctx.target_url, write cache, next()
-            ├── Found + disabled → return 410
-            ├── Found + expired → return 410
-            └── Not found → return 404
-                ↓
-        RedirectHandler (302)
-```
+Test::Nginx executes actual HTTP against the production locations and pgmoon against a disposable PostgreSQL database.
+Seven test files cover IDs, management, resolution, auth/crypto, database/models, admin/runtime and production initialization.
+LuaCov combines normalized unit and OpenResty source paths. The combined source coverage threshold is 80%.
+CI propagates all test failures; the Docker acceptance job requires lint and the Lua 5.1/5.3/LuaJIT unit matrix.
 
-### Key Design Decisions
+## Rollback
 
-1. **No web framework**: OpenResty native `content_by_lua` + custom router. No Lapis, no Gorilla, no middleware framework.
-
-2. **Explicit DI**: All dependencies passed via constructor params. No `ngx.ctx` as service locator.
-
-3. **pgmoon connection pool**: `pgmoon.pool.PostgresPool` is coroutine-safe. Each `db:query` gets its own connection from the pool.
-
-4. **Model layer without ORM**: Simple table-based models with `query(sql, ...)` pattern. No Lapis model ORM, no ActiveRecord.
-
-5. **Status integers**: 1=active, 2=disabled. Logical delete via separate field (deleted_at or status=deleted). Terminal states cannot be reversed.
-
-6. **Unified JSON response**: All management API responses use `{code, message, data}` format.
-
-### Database Schema
-
-```sql
-CREATE TABLE sl_tenant (
-    id          BIGSERIAL PRIMARY KEY,
-    name        VARCHAR(255) NOT NULL,
-    scene_ids   BIGINT[] DEFAULT '{}',
-    status      SMALLINT DEFAULT 1,
-    created_at  TIMESTAMPTZ DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE sl_domain_entry (
-    id          BIGSERIAL PRIMARY KEY,
-    tenant_id   BIGINT REFERENCES sl_tenant(id),
-    domain      VARCHAR(255) NOT NULL UNIQUE,
-    label       VARCHAR(255),
-    description TEXT,
-    status      SMALLINT DEFAULT 1,
-    created_at  TIMESTAMPTZ DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ DEFAULT NOW(),
-    enabled_at  TIMESTAMPTZ,
-    disabled_at TIMESTAMPTZ,
-    deleted_at  TIMESTAMPTZ
-);
-
-CREATE TABLE sl_scene (
-    scene_id        BIGSERIAL PRIMARY KEY,
-    tenant_id       BIGINT REFERENCES sl_tenant(id),
-    name            VARCHAR(255) NOT NULL,
-    description     TEXT,
-    domain_entry_id BIGINT REFERENCES sl_domain_entry(id),
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE sl_scene_config (
-    id          BIGSERIAL PRIMARY KEY,
-    scene_id    BIGINT REFERENCES sl_scene(scene_id),
-    config_key  VARCHAR(255) NOT NULL,
-    config_value TEXT,
-    created_at  TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(scene_id, config_key)
-);
-
-CREATE TABLE sl_link (
-    id          BIGSERIAL PRIMARY KEY,
-    code        VARCHAR(20) NOT NULL UNIQUE,
-    target_url  TEXT NOT NULL,
-    scene_id    BIGINT NOT NULL REFERENCES sl_scene(scene_id),
-    status      SMALLINT NOT NULL DEFAULT 1,
-    created_at  TIMESTAMPTZ DEFAULT NOW(),
-    expires_at  TIMESTAMPTZ
-);
-
-CREATE TABLE sl_id_sequence (
-    id          BIGINT PRIMARY KEY DEFAULT 1,
-    current_max BIGINT NOT NULL DEFAULT 0
-);
-
-INSERT INTO sl_id_sequence (id, current_max) VALUES (1, 0) ON CONFLICT DO NOTHING;
-```
-
-### Nginx Configuration
-
-```nginx
-lua_shared_dict linklet_cache 10m;
-
-server {
-    listen 80;
-    server_name _;
-
-    # Resolution gateway
-    location ~ ^/(.+)$ {
-        content_by_lua_file /app/src/app.lua;
-    }
-
-    # Management API
-    location /shorten/ {
-        limit_except POST { deny all; }
-        content_by_lua_file /app/src/app.lua;
-    }
-
-    location /admin/ {
-        content_by_lua_file /app/src/app.lua;
-    }
-
-    location /v1/ {
-        content_by_lua_file /app/src/app.lua;
-    }
-}
-```
-
-### Testing Strategy
-
-- **Unit tests** (`spec/`): busted BDD, cover algorithm + model logic
-- **Functional tests** (`spec/`): API integration with mocked DB
-- **E2E tests** (`test/e2e/`): Full flow with Docker (OpenResty + PostgreSQL)
-- **Benchmark** (`test/benchmark/`): Short code generation throughput
-- **Coverage**: luacov, threshold 80%
-
-### CI/CD Pipeline
-
-```yaml
-# .github/workflows/test.yml
-jobs:
-  test:
-    matrix: [lua 5.1, luajit-2.1, lua 5.3]
-    steps:
-      - luacheck src/ spec/
-      - busted --coverage
-      - luacov
-      - coverage-threshold.sh 80
-  
-  e2e:
-    needs: [test]
-    steps:
-      - docker build
-      - docker run (OpenResty + PostgreSQL)
-      - busted test/e2e/
-```
+Apply 001 and 003 once to fresh databases; only apply 003 to existing 001 installations after checking current data.
+Verify 003_down then 001_down in a disposable database. Do not use DROP-table rollback on live data.
+Keep backups and coordinate runtime/schema rollback. Old code cannot read AES-GCM credentials, so rolling back code alone after credential rotation is not compatible.

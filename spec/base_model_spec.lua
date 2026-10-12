@@ -47,7 +47,12 @@ describe("BaseModel", function()
         it("inserts a row and returns it", function()
             db.query = function(self, sql, ...)
                 local args = {...}
-                return {{id = 1, code = args[1], target_url = args[2], scene_id = args[3]}}
+                local row, index = {id=1}, 0
+                for name in sql:match("%((.-)%)"):gmatch("[%w_]+") do
+                    index = index + 1
+                    row[name] = args[index]
+                end
+                return {row}
             end
             local row = model:insert({code = "aB9xK2", target_url = "https://example.com", scene_id = 1})
             assert.truthy(row)

@@ -54,20 +54,42 @@ function _M:json_body()
     if not self._ngx or not self._ngx.req then
         return nil, "no ngx context"
     end
-    self._ngx.req.read_body()
-    local body = self._ngx.req.get_body_data()
-    if not body or body == "" then
-        return nil, "empty body"
-    end
+    local body, body_err = self:raw_body()
+    if not body then return nil, body_err end
+    if body == "" then return nil, "empty body" end
     if cjson then
         local data, err = cjson.decode(body)
         if not data then
             return nil, "invalid JSON: " .. tostring(err)
         end
+        if type(data) ~= "table" or body:match("^%s*%[") then
+            return nil, "JSON body must be an object"
+        end
         return data
     end
     -- 简易 JSON 解析后备不适合生产，这里返回错误
     return nil, "cjson not available for JSON parsing"
+end
+
+function _M:raw_body()
+    if self._body ~= nil then return self._body end
+    self._ngx.req.read_body()
+    local body = self._ngx.req.get_body_data()
+    if not body then
+        local path = self._ngx.req.get_body_file()
+        if path then
+            local file, err = io.open(path, "rb")
+            if not file then return nil, err end
+            body = file:read("*a")
+            file:close()
+        end
+    end
+    self._body = body or ""
+    return self._body
+end
+
+function _M:signature_uri()
+    return self._ngx.var.request_uri
 end
 
 --- 获取所有参数（查询参数 + JSON 体）/ Get all parameters
@@ -128,6 +150,7 @@ end
 function _M:set_ngx(ngx)
     self._ngx = ngx
     self._params = nil
+    self._body = nil
 end
 
 return _M

@@ -27,7 +27,8 @@ function _M:_get_dict()
     if self.dict then
         return self.dict
     end
-    local ngx_ok, ngx = pcall(require, "ngx")
+    local ngx = ngx
+    local ngx_ok = ngx ~= nil
     if ngx_ok and ngx.shared then
         self.dict = ngx.shared[self.dict_name]
     end
@@ -47,6 +48,10 @@ function _M:get(key)
     local dict = self:_get_dict()
     if not dict then
         return nil
+    end
+    if self.sync_window and key:sub(1,5) == "link:" then
+        local checked = dict:get("cache:checked")
+        if not checked or ngx.now() - checked > self.sync_window then return nil end
     end
     return dict:get(key)
 end
@@ -79,6 +84,19 @@ function _M:delete(key)
         return nil, "cache not available"
     end
     dict:delete(key)
+    return true
+end
+
+-- A generation guards against an in-flight lookup refilling a disabled entry.
+function _M:generation()
+    local dict = self:_get_dict()
+    return dict and dict:get("cache:generation") or 0
+end
+function _M:invalidate(code)
+    local dict = self:_get_dict()
+    if not dict then return nil, "cache not available" end
+    dict:incr("cache:generation", 1, 0)
+    dict:delete("link:" .. code)
     return true
 end
 

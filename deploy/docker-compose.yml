@@ -1,30 +1,25 @@
-# deploy/docker-compose.yml
-# 本地开发环境 + E2E 测试 / Local dev + E2E test environment
-
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: linklet
       POSTGRES_USER: linklet
-      POSTGRES_PASSWORD: linklet_dev
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${PGPASSWORD:-linklet_dev}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+      - ../migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ../migrations/003_integrity.sql:/docker-entrypoint-initdb.d/003_integrity.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U linklet"]
       interval: 3s
       timeout: 3s
       retries: 10
-
   linklet:
     build:
       context: ..
-      dockerfile: Dockerfile
+      target: runtime
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,27 +28,10 @@ services:
       PGPORT: 5432
       PGDATABASE: linklet
       PGUSER: linklet
-      PGPASSWORD: linklet_dev
+      PGPASSWORD: ${PGPASSWORD:-linklet_dev}
+      LINKLET_ENCRYPTION_KEY: ${LINKLET_ENCRYPTION_KEY:?Set a 64-character hexadecimal encryption key}
       SEGMENT_SIZE: 1000
       CACHE_TTL: 300
-    # 等待 PG → 解析 PG IP → 种子数据 → 启动 Nginx
-    # cosocket 无法用 Docker DNS，需要直接 IP
-    command: >
-      sh -c "
-        echo 'Waiting for PostgreSQL...' &&
-        until PGPASSWORD=linklet_dev psql -h postgres -U linklet -d linklet -c 'SELECT 1' > /dev/null 2>&1; do
-          sleep 1
-          echo -n '.'
-        done &&
-        echo 'PostgreSQL is ready!' &&
-        PGHOST_IP=$$(getent hosts postgres | awk '{print $$1}') &&
-        echo \"PostgreSQL IP: $${PGHOST_IP}\" &&
-        echo 'Seeding test data...' &&
-        PGPASSWORD=linklet_dev psql -h postgres -U linklet -d linklet -c \"INSERT INTO sl_tenant (id, name, status) VALUES (1, 'E2E Test Tenant', 1) ON CONFLICT (id) DO NOTHING; INSERT INTO sl_domain_entry (id, tenant_id, domain, label, status) VALUES (1, 1, 's.test.local', 'e2e-test', 1) ON CONFLICT (id) DO NOTHING; INSERT INTO sl_scene (scene_id, tenant_id, name, domain_entry_id, status) VALUES (1, 1, 'E2E Test Scene', 1, 1) ON CONFLICT (scene_id) DO NOTHING; INSERT INTO sl_link (id, code, target_url, scene_id, status) VALUES (1001, 'e2eTest', 'https://github.com/openresty/openresty', 1, 1) ON CONFLICT (code) DO NOTHING; UPDATE sl_id_sequence SET current_max = 0 WHERE id = 1; DELETE FROM sl_tenant_credential WHERE access_key = 'test-access-key-001'; INSERT INTO sl_tenant_credential (tenant_id, access_key, secret_key_enc, status) VALUES (1, 'test-access-key-001', '180c1d1f4116114e1600124c1e090d005b5548', 1);\" &&
-        echo 'Seed data complete!' &&
-        echo 'Starting OpenResty...' &&
-        PGHOST=$${PGHOST_IP} openresty -g 'daemon off;'
-      "
-
+      CACHE_SYNC_INTERVAL: 0.5
 volumes:
   pgdata:

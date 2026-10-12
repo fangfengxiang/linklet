@@ -41,6 +41,8 @@ local function mock_cache()
         store[key] = value
         return true
     end
+    result.generation = function() return 0 end
+    result.invalidate = function(self, code) store["link:" .. code] = nil; return true end
     result.delete = function(self, key)
         store[key] = nil
         return true
