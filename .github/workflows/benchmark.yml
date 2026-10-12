@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Lua
-        uses: leafo/gh-actions-lua@v10
+        uses: leafo/gh-actions-lua@v13
         with:
           luaVersion: "luajit-2.1"
 
@@ -28,4 +28,4 @@ jobs:
       - name: Run obfuscator benchmark
         run: |
           export PATH="$PATH:$HOME/.luarocks/bin"
-          lua test/benchmark/obfuscator_bench.lua
+          make benchmark

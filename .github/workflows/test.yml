@@ -15,9 +15,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Lua toolchain
-        uses: leafo/gh-actions-lua@v10
+        uses: leafo/gh-actions-lua@v13
         with:
           luaVersion: "5.1"
+
+      - name: Verify installed Lua
+        run: lua -v
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v5
@@ -41,9 +44,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Lua ${{ matrix.lua }}
-        uses: leafo/gh-actions-lua@v10
+        uses: leafo/gh-actions-lua@v13
         with:
           luaVersion: ${{ matrix.lua }}
+
+      - name: Verify installed Lua
+        run: lua -v
 
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v5
