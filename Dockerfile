@@ -8,6 +8,8 @@ RUN apk add --no-cache curl
 COPY --from=dependencies /usr/local/openresty/luajit/share/lua/5.1/ /usr/local/openresty/luajit/share/lua/5.1/
 COPY --from=dependencies /usr/local/openresty/luajit/lib/lua/5.1/ /usr/local/openresty/luajit/lib/lua/5.1/
 COPY src/ /app/src/
+COPY lib/ /app/lib/
+COPY api/ /app/api/
 COPY conf/ /app/conf/
 COPY conf/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY conf/conf.d/ /etc/nginx/conf.d/
@@ -20,7 +22,7 @@ EXPOSE 80
 CMD ["openresty", "-g", "daemon off;"]
 
 FROM dependencies AS acceptance-dependencies
-RUN apk add --no-cache perl perl-dev make gcc musl-dev postgresql-client wget python3 bash curl \
+RUN apk add --no-cache perl perl-dev make gcc musl-dev postgresql16-client wget python3 bash curl \
     && wget --timeout=30 --tries=3 -qO /tmp/cpanm https://cpanmin.us \
     && perl /tmp/cpanm --notest Test::Nginx@0.32 \
     && rm /tmp/cpanm

@@ -1,7 +1,7 @@
 local _M = {}
 function _M.start(root)
     if jit then jit.off() end
-    require("luacov.runner").init({statsfile=root .. "/luacov.stats.out",include={"src/"}})
+    require("luacov.runner").init({statsfile=root .. "/luacov.stats.out",include={"^lib/linklet/", "^" .. root .. "/lib/linklet/"}})
 end
 function _M.stop(root)
     local runner = require("luacov.runner")

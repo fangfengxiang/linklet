@@ -60,11 +60,11 @@ accepted
 
 === TEST 3: package entry point loads and inherited domain update is rejected by the database
 --- test_code
-assert(require("linklet") == require("app"))
+assert(require("linklet") == require("linklet.app"))
 local result = a.deps.domain_entry_model:update({domain="mutated.example.com"},"id = $2",{1})
 assert(not result)
 local row = a.deps.scene_model:find_by_id_with_domain(1)
-assert(row.tenant_id == 1 and row.domain == "s.example.com")
+assert(row.scene_id == 1 and row.domain == "s.example.com")
 --- request
 GET /t
 --- response_body

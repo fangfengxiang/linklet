@@ -1,7 +1,7 @@
 -- spec/cache_spec.lua
 -- 缓存测试 / Cache tests
 
-local Cache = require("lib.cache")
+local Cache = require("linklet.cache.local")
 
 describe("Cache", function()
     local cache

@@ -2,7 +2,7 @@
 -- 模型基类测试 / Base model tests
 
 local helper = require("helper")
-local BaseModel = require("models.base_model")
+local BaseModel = require("linklet.repository.base")
 
 describe("BaseModel", function()
     local model, db

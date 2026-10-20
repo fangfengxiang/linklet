@@ -2,7 +2,7 @@
 -- 发号器测试：号段分配、本地消耗、跳号容忍
 -- ID generator tests: segment allocation, local consumption, gap tolerance
 
-local IdGenerator = require("lib.id_generator")
+local IdGenerator = require("linklet.id.generator")
 local helper = require("helper")
 
 describe("IdGenerator", function()

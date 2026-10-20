@@ -3,9 +3,9 @@
 -- Resolve handler tests: cache hit/miss, status validation, expiration
 
 local helper = require("helper")
-local CacheHandler = require("shorten.cache_handler")
-local ResolveHandler = require("shorten.resolve_handler")
-local RedirectHandler = require("shorten.redirect_handler")
+local CacheHandler = require("linklet.gateway.cache")
+local ResolveHandler = require("linklet.gateway.resolver")
+local RedirectHandler = require("linklet.gateway.redirect")
 
 describe("Resolution flow", function()
     local cache, link_model, resp
@@ -17,10 +17,10 @@ describe("Resolution flow", function()
 
     describe("CacheHandler", function()
         it("returns cached value on cache hit", function()
-            cache:set("link:aB9xK2", "https://example.com/target")
+            cache:set("link:s.example.com:aB9xK2", "https://example.com/target")
             local ch = CacheHandler.new(cache)
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -37,7 +37,7 @@ describe("Resolution flow", function()
         it("passes through on cache miss", function()
             local ch = CacheHandler.new(cache)
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -57,7 +57,9 @@ describe("Resolution flow", function()
         before_each(function()
             link_model = {
                 find_by_code = function(self, code)
-                    return {code = code, target_url = "https://example.com/page", status = 1}
+                    return {code = code,
+                        target_url = "https://example.com/page", domain="s.example.com", domain_status=2,
+                        status = 1}
                 end,
             }
             resolve_handler = ResolveHandler.new({
@@ -68,7 +70,7 @@ describe("Resolution flow", function()
         end)
 
         it("resolves from database on cache miss", function()
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -83,7 +85,7 @@ describe("Resolution flow", function()
         end)
 
         it("writes to cache after DB resolution", function()
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -91,11 +93,11 @@ describe("Resolution flow", function()
 
             resolve_handler:handle(ctx, function() return true end)
 
-            assert.equals("https://example.com/page", cache:get("link:aB9xK2"))
+            assert.equals("https://example.com/page", cache:get("link:s.example.com:aB9xK2"))
         end)
 
         it("skips DB query when already resolved (cache hit)", function()
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -113,7 +115,7 @@ describe("Resolution flow", function()
         it("returns 404 for non-existent code", function()
             link_model.find_by_code = function() return nil end
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "zzzzzz"},
                 cache = cache,
                 response = resp,
@@ -126,10 +128,11 @@ describe("Resolution flow", function()
 
         it("returns 410 for disabled link", function()
             link_model.find_by_code = function()
-                return {code = "aB9xK2", target_url = "https://example.com", status = 2}
+                return {code = "aB9xK2", target_url = "https://example.com", domain="s.example.com", domain_status=2,
+                        status = 2}
             end
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -142,10 +145,11 @@ describe("Resolution flow", function()
 
         it("returns 410 for expired link (numeric expires_at)", function()
             link_model.find_by_code = function()
-                return {code = "aB9xK2", target_url = "https://example.com", status = 1, expires_at = 1000}
+                return {code = "aB9xK2", target_url = "https://example.com", domain="s.example.com", domain_status=2,
+                        status = 1, expires_at = 1000}
             end
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -159,10 +163,11 @@ describe("Resolution flow", function()
         it("returns 410 for expired link (string expires_at with ngx)", function()
             link_model.find_by_code = function()
                 return {code = "aB9xK2", target_url = "https://example.com",
+                        domain="s.example.com", domain_status=2,
                         status = 1, expires_epoch = 978307200}
             end
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -174,7 +179,7 @@ describe("Resolution flow", function()
         end)
 
         it("returns 404 when code is missing from params", function()
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {},
                 cache = cache,
                 response = resp,
@@ -190,7 +195,7 @@ describe("Resolution flow", function()
         it("sets 302 redirect with Location header", function()
             local rh = RedirectHandler.new()
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 target_url = "https://example.com/target",
                 response = resp,
             }
@@ -204,7 +209,7 @@ describe("Resolution flow", function()
         it("returns 404 when target_url is not set", function()
             local rh = RedirectHandler.new()
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 response = resp,
             }
 
@@ -219,7 +224,9 @@ describe("Resolution flow", function()
             cache = helper.mock_cache()
             link_model = {
                 find_by_code = function(self, code)
-                    return {code = code, target_url = "https://target.example.com", status = 1}
+                    return {code = code,
+                        target_url = "https://target.example.com", domain="s.example.com", domain_status=2,
+                        status = 1}
                 end,
             }
 
@@ -227,7 +234,7 @@ describe("Resolution flow", function()
             local rh = ResolveHandler.new({link_model = link_model, cache = cache, cache_ttl = 300})
             local rd = RedirectHandler.new()
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,
@@ -244,20 +251,20 @@ describe("Resolution flow", function()
             assert.equals(302, resp._status)
             assert.equals("https://target.example.com", resp._location)
             -- 验证缓存被写入 / verify cache was written
-            assert.equals("https://target.example.com", cache:get("link:aB9xK2"))
+            assert.equals("https://target.example.com", cache:get("link:s.example.com:aB9xK2"))
         end)
     end)
 
     describe("Full resolution flow (cache hit)", function()
         it("chain: cache_hit → skip_DB → redirect", function()
             cache = helper.mock_cache()
-            cache:set("link:aB9xK2", "https://cached.example.com")
+            cache:set("link:s.example.com:aB9xK2", "https://cached.example.com")
 
             local ch = CacheHandler.new(cache)
             local rh = ResolveHandler.new({link_model = link_model, cache = cache, cache_ttl = 300})
             local rd = RedirectHandler.new()
 
-            local ctx = {
+            local ctx = {host="s.example.com",
                 params = {code = "aB9xK2"},
                 cache = cache,
                 response = resp,

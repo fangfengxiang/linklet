@@ -3,9 +3,9 @@
 -- Management handler tests: create, gen, disable
 
 local helper = require("helper")
-local Obfuscator = require("lib.obfuscator")
-local ShortenHandler = require("shorten.handler")
-local IdGenerator = require("lib.id_generator")
+local Obfuscator = require("linklet.id.obfuscator")
+local ShortenHandler = require("linklet.admin.handlers.short_link")
+local IdGenerator = require("linklet.id.generator")
 
 describe("ShortenHandler", function()
     local handler, deps, mock_link_model, mock_scene_model, mock_cache, resp, id_gen
@@ -25,11 +25,11 @@ describe("ShortenHandler", function()
             find_by_id_with_domain = function(self, scene_id)
                 return {
                     scene_id = scene_id,
-                    tenant_id = 1,
+                    status = 1,
                     name = "test_scene",
                     domain_entry_id = 1,
                     domain = "s.example.com",
-                    domain_status = 1,
+                    domain_status = 2,
                 }
             end,
         }
@@ -48,6 +48,7 @@ describe("ShortenHandler", function()
             obfuscator = Obfuscator,
             link_model = mock_link_model,
             scene_model = mock_scene_model,
+            tenant_model = {authorized=function(_,id) return id==1 end},
             cache = mock_cache,
         }
 
@@ -112,7 +113,7 @@ describe("ShortenHandler", function()
             assert.equals(404, resp._status)
         end)
 
-        it("returns 403 when scene belongs to different tenant", function()
+        it("returns 403 when tenant has no scene grant", function()
             local ctx = {
                 params = {target_url = "https://example.com", scene_id = 1},
                 tenant_id = 999,  -- different tenant
@@ -144,7 +145,7 @@ describe("ShortenHandler", function()
 
         it("returns 400 when domain not configured", function()
             mock_scene_model.find_by_id_with_domain = function()
-                return {scene_id = 1, tenant_id = 1, domain = nil}
+                return {scene_id = 1, status = 1, domain = nil}
             end
 
             local ctx = {

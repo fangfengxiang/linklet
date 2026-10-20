@@ -2,7 +2,7 @@
 -- 租户凭证模型测试 / Tenant credential model tests
 
 local helper = require("helper")
-local TenantCredential = require("models.tenant_credential")
+local TenantCredential = require("linklet.repository.credential")
 
 describe("TenantCredential", function()
     local model, db

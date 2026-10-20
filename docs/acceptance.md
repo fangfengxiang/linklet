@@ -10,7 +10,7 @@
 | Worker 协程 | 仅分配慢路径使用 semaphore；20 协程不重复 | `001-id-generator.t` TEST 2 |
 | 短码容量 | 用户确认 32 位；16 位分段精确模乘；超限拒绝 | `001-id-generator.t` TEST 3–4 |
 | 停用参数 | disable 只要求 code；重复停用返回 404 | `002-management.t` TEST 1 |
-| 多租户停用 | UPDATE 通过场景限定 tenant_id，外租户不能修改 | `002-management.t` TEST 2 |
+| 多租户停用 | UPDATE 按当前 tenant.scene_ids 授权限定，未授权租户不能修改 | `002-management.t` TEST 2 |
 | 参数及响应 | 参数错误 400、场景越权 403、JSON data:null | `002-management.t` TEST 3 |
 | 参数类型与数据库错误 | false/数组字段返回 400；数据库失败不伪装成 404 | `002-management.t` TEST 5 |
 | 完整短链 | 补 HTTP(S) scheme；停用域名不生成链接 | `002-management.t` TEST 4 |
@@ -25,7 +25,7 @@
 | 请求体 | 非 JSON 对象拒绝；落盘 body 完整校验签名 | `004-auth-crypto.t` TEST 4 |
 | 数据库连接 | 修正 pgmoon.new；连接复用；标量转义 | `005-database-models.t` TEST 1 |
 | 数据库事务 | nil/error、异常均回滚；正常回调提交 | `005-database-models.t` TEST 2 |
-| 数据不变量 | 所属租户、状态、域名不可变、短码永久保留 | `005-database-models.t` TEST 3 |
+| 数据不变量 | 当前绑定域名、状态、域名不可变、短码永久保留 | `005-database-models.t` TEST 3 |
 | 健康检查 | readiness 查询数据库；liveness 独立 | `006-runtime-admin.t` TEST 1 |
 | 管理后台 | 租户/安全凭证创建、列表、停用闭环 | `006-runtime-admin.t` TEST 2 |
 | 包与模型 | linklet 包入口；继承更新仍受数据库约束 | `006-runtime-admin.t` TEST 3 |
@@ -56,26 +56,49 @@ make coverage
 
 本机默认 PostgreSQL 为 `127.0.0.1:15432`；`LINKLET_TEST_PGPORT` 可以改变端口。测试会清空 `linklet_test` 内的业务表，必须使用独立数据库。
 
-## 验收结果
+## v0.2 验收结果（2026-10-21）
 
-2026-10-13 最终隔离 Compose 流程返回 0：
+最终 `make acceptance-docker` 全流程退出码为 0：
 
-- 单实例 Test::Nginx：7 个文件、75 个断言通过。
-- 两个真实生产镜像实例：1 个 Test::Nginx 文件、3 个断言通过（独立号段、两侧解析、跨实例停用传播）。
-- busted：143 项通过；luacheck：0 警告、0 错误。
-- 合并源码覆盖率：90.68%，门槛 80%。
-- 001/003 正向迁移、003_down/001_down 逆序回滚：通过。
-- LuaRocks 实际安装及安装后的 require("linklet")：通过。
-- 生产镜像 Nginx 配置校验：通过；缺少加密密钥时实际启动返回失败：符合预期。
-- 文档文件、相对链接、OpenSpec 严格校验、部署/CI YAML 解析：通过。
+- Busted：150 项通过，无失败/错误；luacheck：72 个文件，0 警告、0 错误。
+- 单实例 Test::Nginx：8 个文件、96 个断言通过。
+- 多实例 Test::Nginx：1 个文件、3 个断言通过，真实生产镜像共享 ID、独立缓存失效。
+- 项目源码合并覆盖率：94.50%，门槛仍为 80%；仅统计 lib/linklet，排除 OpenResty 第三方 lualib。
+- 旧 001/003 正向与逆序回滚、004 扩展、005 切换：通过；缺少域名会阻断切换且无部分状态转换。
+- 历史短码/URL/Scene/AK/current_max 快照一致，旧应用扩展期间新增 Scene 获授权；七张基础表、旧域名映射及凭证密文保留：通过。
+- PostgreSQL 16 dump/restore 到独立数据库、快照对比：通过。
+- LuaRocks 真实安装及安装后的 require("linklet")、Core/Admin/Gateway 依赖边界检查：通过。
+- OpenSpec `validate --all --strict`：10 项通过；OpenAPI YAML：23 条路径/操作，operationId 唯一且业务接口认证完整；部署/CI YAML 和文档链接检查通过。
 
-可复验命令：`make acceptance-docker`。正式规格同步到 `openspec/specs/`；任务清单 65/65 已完成。
+新增 SDD 场景在 `008-v02-contracts.t`：
+
+| 场景 | 证据 |
+|---|---|
+| 共享 Scene 创建/读取/停用，撤权后拒绝管理 | TEST 1 |
+| Host 隔离，Tenant/Scene 停用后永久短链仍解析 | TEST 2 |
+| Scene 改绑旧 Host 404、新 Host 302、独立缓存同步 | TEST 3 |
+| 域名生命周期、配置与授权管理 API、负向校验 | TEST 4 |
+| 域名下线与并发 Scene 绑定互斥 | TEST 5 |
+| next_ids/allocate_segment 混合并发不重叠、游标不可回退 | TEST 6 |
+| create/gen 过期输入一致拒绝、凭证不可原地修改/删除复用 | TEST 7 |
+
+## Review 修复记录
+
+- pgmoon 成功返回的查询计数被误作错误：统一适配成功返回值，增加真实查询断言。
+- 备份工具自动安装 PostgreSQL 18 客户端，与服务端 16 恢复不兼容：验收镜像固定客户端 16。
+- lib/ 的宽泛覆盖率匹配误含第三方 lualib：明确限定项目路径，保留覆盖率门槛。
+- Admin 直接依赖 Gateway Host 工具：提取纯 Core 域名规则，并加入依赖方向检查。
+- 新代码误连旧/仅 expand 数据库：readiness 验证实际 sl_short_link 基础表和 sequence_key。
+- 拒绝零/无穷 TTL 与无效同步周期，避免零 TTL 导致缓存永久保留、绕过业务到期时间。
+- 补齐迁移前悬空授权、历史域名格式检查，防止静默切换；所有已部署迁移文件保持不变。
+
+历史基线为 143 项单测、75+3 个运行时断言、90.68% 覆盖率。v0.2 本次证据来自隔离测试，不代表生产部署或生产历史域名兼容验收。线上流程见 [迁移手册](v02-migration.md)。
 
 ## 一致性与边界
 
 - 正整数 ID 最大 4294967295。号段跨越上限会被拒绝；剩余不足一个号段时可调整段大小，不会回绕。
 - 黄金比例混淆可逆，不提供密码学不可预测性；公开短码不是权限凭证。
-- 同实例停用即时删除缓存。默认跨实例同步窗口为 1 秒，属于有界传播；正在执行的旧请求可完成。定时器或数据库不可用时，同步过期会绕过缓存。
+- 同实例停用即时切换缓存 generation。默认跨实例同步窗口为 1 秒，属于有界传播；正在执行的旧请求可完成。定时器或数据库不可用时，同步过期会绕过缓存。
 - `003-resolution.t` 验证独立 shared dict；`007-production-init.t` 验证定时器；`multi-instance/001-runtime.t` 验证两台真实容器。此结果不等于 Kubernetes 集群压力验收。
 - HTTP 签名时间窗口为 300 秒，不保证窗口内恰好执行一次。
 - 本地测试、镜像与配置验证不等于远程 GitHub Actions 已运行或生产已部署。

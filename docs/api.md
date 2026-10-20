@@ -4,7 +4,7 @@
 
 ### `GET /:code`
 
-Resolve a short code and redirect to the target URL.
+Resolve a short code under the Scene current deployed domain. Host mismatch returns 404. Tenant/Scene status does not block existing links.
 
 **Request**
 
@@ -22,6 +22,7 @@ GET /aB9xK2
 
 **Cache Behavior**
 
+- Cache key includes normalized Host + Code + generation.
 - First request: cache miss → database query → cache write → 302 redirect
 - Subsequent requests: cache hit → skip database → 302 redirect
 - Cache TTL: min(300 seconds by default, remaining link lifetime)
@@ -49,15 +50,15 @@ Create a short link. Returns the generated short code.
 {
   "target_url": "https://example.com/page",
   "scene_id": 1,
-  "expires_at": "2025-12-31T23:59:59Z"
+  "expires_at": "2099-12-31T23:59:59Z"
 }
 ```
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `target_url` | Yes | string | Target URL (max 2048 chars) |
-| `scene_id` | Yes | number | Scene ID |
-| `expires_at` | No | string | Expiration timestamp (ISO 8601) |
+| `scene_id` | Yes | number | Scene business ID (1..4294967295) |
+| `expires_at` | No | string | Future RFC3339 timestamp; omitted or null = permanent |
 
 **Response**
 
@@ -77,7 +78,7 @@ Create a short link. Returns the generated short code.
 |------|------------|---------|
 | 400 | 4001 | target_url is required |
 | 400 | 4002 | scene_id is required |
-| 403 | 4004 | scene does not belong to tenant |
+| 403 | 4004 | scene not authorized |
 | 404 | 4003 | scene not found or inactive |
 | 500 | 500 | internal server error |
 
@@ -217,3 +218,25 @@ timestamp = str(int(time.time()))
 message = "\n".join([method, uri, timestamp, body]).encode()
 signature = base64.b64encode(hmac.new(secret_key.encode(), message, hashlib.sha1).digest()).decode()
 ```
+
+## v0.2 operator resources
+
+The full machine-readable contract is [api/openapi.yaml](../api/openapi.yaml). All paths below begin with `/api/v1/admin/` and retain the loopback-only network policy. They do not implement browser sessions; do not persist SK in a browser.
+
+| Method | Resource/action | Parameters |
+|---|---|---|
+| PUT | tenant/grant | id, scene_ids array (deduplicated; all scenes must exist) |
+| PUT | tenant/status | id, status 1/2 |
+| POST | domain/create | domain hostname; optional tag, description |
+| GET | domain/list | none; first 100 |
+| PUT | domain/deploy, domain/disable | id; new→deployed→offline, bound scenes prevent offline |
+| POST | scene/create | scene_id, name, domain_entry_id |
+| GET | scene/list | tenant_id query, authorized scenes |
+| PUT | scene/configure | scene_id; domain_entry_id and/or status 1/2 |
+| PUT | scene_config/set | scene_id, config_key, config_value; optional description |
+| GET | scene_config/list | scene_id query |
+| DELETE | scene_config/delete | scene_id, config_key JSON body |
+
+`GET /api/v1/shorten/get?code=...` requires AK/SK headers and current Scene authorization. Unauthorized/missing links return 404. Two tenants granted the same Scene may create, read and disable its links. Revocation affects future management operations, never historical redirects.
+
+Both create and gen require a deployed domain. Bad expiration is 400; creation requires a future timestamp, while existing expired records resolve to 410. Domain state conflicts are 409. Rebinding changes the accepted Host for all links in the Scene; release implications are documented in [the migration guide](v02-migration.md). SceneConfig is a KV store; parameter forwarding is not yet implemented.

@@ -10,7 +10,7 @@ add_block_preprocessor(sub {
     my $production = <$file>;
     my ($init) = $production =~ /(    init_by_lua_block \{.*?\n    \})/s;
     die 'Production initialization missing' unless $init;
-    $init =~ s/local app = require\("app"\)/linklet_production_test = true; local app = require("app")/;
+    $init =~ s/local app = require\("linklet.app"\)/linklet_production_test = true; local app = require("linklet.app")/;
     my $http = ($block->http_config || '') . $init;
     $block->set_value('http_config',$http);
     $block->set_value('config', 'include ' . $ENV{LINKLET_ROOT} . '/conf/locations.conf;' . $block->config);
@@ -21,12 +21,12 @@ __DATA__
 --- config
 location /t {
     content_by_lua_block {
-        local deps = require("app").get_deps()
+        local deps = require("linklet.app").get_deps()
         assert(deps.db.config.host == "127.0.0.1")
         assert(deps.db.config.port == tonumber(os.getenv("LINKLET_TEST_PGPORT")))
         assert(deps.db.config.database == "linklet_test")
         assert(deps.db.config.password == "acceptance_only")
-        assert(require("lib.crypto").decrypt(assert(require("lib.crypto").encrypt("round-trip"))) == "round-trip")
+        assert(require("linklet.crypto").decrypt(assert(require("linklet.crypto").encrypt("round-trip"))) == "round-trip")
         ngx.sleep(0.6)
         assert(ngx.shared.linklet_cache:get("cache:checked"))
         ngx.say("initialized")

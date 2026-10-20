@@ -1,16 +1,27 @@
-# Linklet 设计
+# Linklet v0.2 设计
 
-技术与验收设计以 [OpenSpec design](../openspec/changes/linklet-core/design.md) 为准，正式行为需求存放在 `openspec/specs/`，变更规格存放在同一变更的 `specs/`，任务状态见 `tasks.md`。
+设计依据为 [v0.2 SDD](../openspec/changes/refactor-backend-v02/design.md)，正式行为规范见 `openspec/specs/`。迁移与发布门槛见 [迁移手册](v02-migration.md)，文件映射和取舍见 [审计记录](v02-audit.md)。
 
-管理请求：Nginx → Router → auth → JSON → 按接口校验 → Handler → Model → PostgreSQL。
-解析请求：Nginx → CacheHandler → ResolveHandler → RedirectHandler。
+```mermaid
+flowchart LR
+  Nginx --> Admin
+  Nginx --> Gateway
+  Admin --> Core
+  Admin --> Repository
+  Core --> Repository
+  Core --> ID
+  Gateway --> Cache
+  Gateway --> Repository
+  Repository --> PostgreSQL
+  ID --> PostgreSQL
+```
 
-依赖在 `app.init` 中构造并注入；各 handler 不通过请求上下文查找服务。响应对象按请求创建。
+所有模块在 lib/linklet；Core 不依赖 ngx、HTTP 或 SQL。Admin HTTP 适配调用 Core 创建用例，简单资源操作直接调用 Repository。Gateway 缓存命中后统一进入 Redirect，不经过 Admin。构造参数注入依赖，不引入框架或 Service 层。
 
-五张领域表加凭证和号段共七张表；场景与域名租户由复合外键保持一致，链接只保留 scene_id。数据库约束保护状态终态、域名/链接不可变性和短码永久保留。
+七张表为 DomainEntry、Scene、SceneConfig、Tenant、TenantCredential、ShortLink、IDSequence。ShortLink 仅关联 scene_id；Tenant.scene_ids 为授权集合，多租户共同管理同 Scene 的链接。保留旧字段供迁移过渡，它们不再表示业务归属。
 
-用户确认 32 位 ID 容量；精确模乘保证该范围内双射。超限拒绝，不能用数据库唯一约束代替算法正确性。
+域名状态为 1新增→2投产→3下线；有未删除 Scene 绑定时禁止下线。Scene 绑定变更和域名下线持有同一域名行锁。链接和凭证停用为终态，code 永久不复用；场景业务 ID、目标 URL 和 SK 不原地修改。
 
-本地缓存由 Worker 共享；跨实例用 PostgreSQL 修订号轮询，默认同步新鲜度窗口 1 秒。过期缓存绕过，业务到期时间限制缓存 TTL。
+Gateway 检查 Host 与当前域名、域名投产状态、链接状态和 expires_at，不因 Tenant/Scene 停用阻断历史短链。缓存键包含 Host+Code+generation，TTL 不超过有效期。持久 revision 轮询默认 0.5 秒，同步新鲜度窗口为 1 秒；超时绕过缓存，数据库失败返回 500。正在执行的旧请求可以完成。
 
-详细验收证据见 [acceptance.md](acceptance.md)。
+所有 Scene 共享 sequence_key=1；数据库 step 为默认号段长度。next_id、next_ids 和 allocate_segment 分配不重叠，直接返回的号段不进入 Worker 池；32 位上限拒绝回绕，允许失败与重启产生空洞。

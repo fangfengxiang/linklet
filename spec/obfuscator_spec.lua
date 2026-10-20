@@ -2,7 +2,7 @@
 -- 短码生成算法测试：黄金比例混淆 + Base62 编码
 -- Short code generation tests: golden ratio obfuscation + Base62 encoding
 
-local Obfuscator = require("lib.obfuscator")
+local Obfuscator = require("linklet.id.obfuscator")
 
 describe("Obfuscator - Base62 encoding", function()
     describe("encode_base62", function()

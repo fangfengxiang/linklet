@@ -27,7 +27,7 @@ The system SHALL provide a POST endpoint to create a short link.
 
 #### Scenario: Invalid scene_id
 
-- **GIVEN** a request with a scene_id that does not belong to the authenticated tenant
+- **GIVEN** a request with a scene_id that is not authorized for the authenticated tenant
 - **WHEN** POST /api/v1/shorten/create is called
 - **THEN** the response SHALL have status code 403 with error message
 
@@ -87,11 +87,11 @@ The system SHALL return all management API responses in a unified JSON format.
 
 ### Requirement: Tenant-constrained disable and endpoint validation
 
-Disable SHALL accept only the required code parameter and SHALL update only links owned by the authenticated tenant.
+Disable SHALL accept only the required code parameter and SHALL update only links in scenes currently granted to the authenticated tenant.
 
 #### Scenario: Foreign tenant code
 
-- **GIVEN** tenant A owns an active link and tenant B is authenticated
+- **GIVEN** tenant A created an active link and tenant B is authenticated without that scene grant
 - **WHEN** tenant B attempts to disable that code
 - **THEN** the response SHALL be 404 and the link SHALL remain active
 
@@ -100,3 +100,20 @@ Disable SHALL accept only the required code parameter and SHALL update only link
 - **GIVEN** an authenticated disable request without code
 - **WHEN** endpoint validation runs
 - **THEN** the response SHALL be 400 JSON with data:null, not 500
+
+### Requirement: Single short-link creation path
+`create` 与 `gen` SHALL 复用同一个创建用例；`gen` 只增加完整短 URL 输出。创建 SHALL 校验租户 Scene 授权、Scene 启用及 DomainEntry 已投产。
+#### Scenario: Create and gen parity
+- **GIVEN** 同一有效输入和授权
+- **WHEN** 分别调用 create 与 gen
+- **THEN** 两者 SHALL 使用相同创建规则；gen SHALL 返回 short_url
+#### Scenario: Immutable target
+- **GIVEN** 短链已创建
+- **WHEN** 尝试修改 target_url
+- **THEN** 系统 SHALL 拒绝修改
+### Requirement: Terminal disable
+短链停用 SHALL 为终态，且停用操作 SHALL 重新验证调用租户对所属 Scene 的授权。
+#### Scenario: Unauthorized disable
+- **GIVEN** 调用租户无 Scene 授权
+- **WHEN** 请求停用某短码
+- **THEN** 操作 SHALL 被拒绝，短链仍有效

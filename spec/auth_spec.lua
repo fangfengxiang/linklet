@@ -2,14 +2,14 @@
 -- 认证中间件测试 / Auth middleware tests
 
 local helper = require("helper")
-local AuthMiddleware = require("middleware.auth")
+local AuthMiddleware = require("linklet.admin.auth")
 
 describe("AuthMiddleware", function()
     local auth_mw, mock_credential_model, resp, req
 
     local original_verify
     before_each(function()
-        original_verify = require("models.tenant_credential").verify_signature
+        original_verify = require("linklet.repository.credential").verify_signature
         mock_credential_model = {
             find_by_access_key = function(self, ak)
                 return {
@@ -21,7 +21,7 @@ describe("AuthMiddleware", function()
             end,
         }
         -- Monkey-patch the module-level verify_signature
-        local TenantCredential = require("models.tenant_credential")
+        local TenantCredential = require("linklet.repository.credential")
         TenantCredential.verify_signature = function(sk, str, sig)
             return sk == "test-secret-key" and sig == "valid-signature"
         end
@@ -31,7 +31,7 @@ describe("AuthMiddleware", function()
     end)
 
     after_each(function()
-        require("models.tenant_credential").verify_signature = original_verify
+        require("linklet.repository.credential").verify_signature = original_verify
     end)
 
     describe("valid authentication", function()

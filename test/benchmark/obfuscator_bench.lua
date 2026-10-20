@@ -1,7 +1,7 @@
 -- test/benchmark/obfuscator_bench.lua
 -- 短码生成基准测试 / Short code generation benchmark
 
-local Obfuscator = require("lib.obfuscator")
+local Obfuscator = require("linklet.id.obfuscator")
 
 local function bench(name, fn, iterations)
     iterations = iterations or 1000000

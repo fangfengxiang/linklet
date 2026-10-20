@@ -26,7 +26,7 @@ __DATA__
 local code = a.create()
 local status, _, headers = a.request("GET","/" .. code)
 assert(status == 302 and headers:find("Location: https://example.com/page",1,true))
-assert(a.deps.cache:get("link:" .. code) == "https://example.com/page")
+assert(a.deps.cache:get("link:s.example.com:" .. code) == "https://example.com/page")
 local original = a.deps.link_model.find_by_code
 local queries = 0
 a.deps.link_model.find_by_code = function(...) queries = queries+1; return original(...) end
@@ -42,9 +42,10 @@ accepted
 
 === TEST 2: a past PostgreSQL TIMESTAMPTZ returns 410, including an offset
 --- test_code
-local code = a.create({target_url="https://example.com",scene_id=1,expires_at="2001-01-01T08:00:00+08:00"})
+local code = a.create()
+assert(a.deps.db:query("UPDATE sl_short_link SET expires_at=$1 WHERE code=$2","2001-01-01T08:00:00+08:00",code))
 assert(a.request("GET","/" .. code) == 410)
-assert(not a.deps.cache:get("link:" .. code))
+assert(not a.deps.cache:get("link:s.example.com:" .. code))
 assert(a.request("GET","/missingCode") == 404)
 --- request
 GET /t
@@ -85,7 +86,7 @@ assert(a.request("PUT","/api/v1/shorten/disable",require("cjson").encode({code=c
 resume:post(1)
 assert(ngx.thread.wait(lookup))
 a.deps.link_model.find_by_code = original
-assert(not a.deps.cache:get("link:" .. code))
+assert(not a.deps.cache:get("link:s.example.com:" .. code))
 assert(a.request("GET","/" .. code) == 410)
 --- request
 GET /t
@@ -97,14 +98,14 @@ accepted
 === TEST 5: independent instance caches synchronize; stale synchronization bypasses cache
 --- test_code
 local code = a.create()
-local other = require("lib.cache").new("other_cache")
-local sync = require("lib.cache_sync").new(a.deps.db,other,0.05)
+local other = require("linklet.cache.local").new("other_cache")
+local sync = require("linklet.cache.sync").new(a.deps.db,other,0.05)
 assert(sync:tick())
-assert(other:set("link:" .. code,"https://example.com/page",300))
-assert(other:get("link:" .. code))
+assert(other:set("link:s.example.com:" .. code,"https://example.com/page",300))
+assert(other:get("link:s.example.com:" .. code))
 assert(a.request("PUT","/api/v1/shorten/disable",require("cjson").encode({code=code})) == 200)
 assert(sync:tick())
-assert(not other:get("link:" .. code))
+assert(not other:get("link:s.example.com:" .. code))
 assert(other:set("link:staleCode","https://example.com/page",300))
 ngx.sleep(0.12)
 assert(not other:get("link:staleCode"))

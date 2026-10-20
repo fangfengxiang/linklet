@@ -2,7 +2,7 @@
 -- 路由器测试：路由匹配、中间件链
 -- Router tests: route matching, middleware chain
 
-local Router = require("router")
+local Router = require("linklet.http.router")
 
 describe("Router", function()
     describe("route matching", function()

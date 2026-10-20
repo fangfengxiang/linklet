@@ -1,7 +1,7 @@
 -- spec/response_spec.lua
 -- 响应工具测试 / Response utility tests
 
-local Response = require("lib.response")
+local Response = require("linklet.http.response")
 
 describe("Response", function()
     local resp

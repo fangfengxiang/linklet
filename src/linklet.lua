@@ -1,1 +1,1 @@
-return require("app")
+return require("linklet.app")

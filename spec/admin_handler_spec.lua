@@ -2,8 +2,8 @@
 -- Admin 管理处理器测试 / Admin handler tests
 
 local helper = require("helper")
-local TenantHandler = require("admin.tenant_handler")
-local CredentialHandler = require("admin.credential_handler")
+local TenantHandler = require("linklet.admin.handlers.tenant")
+local CredentialHandler = require("linklet.admin.handlers.credential")
 
 describe("Admin Handlers", function()
     describe("TenantHandler", function()

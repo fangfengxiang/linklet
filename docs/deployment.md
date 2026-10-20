@@ -10,16 +10,16 @@ docker compose -f deploy/docker-compose.yml up --build -d
 curl -f http://127.0.0.1:8080/health
 ```
 
-Compose 的新数据库会执行 001、003。已有数据库不会重新执行初始化目录，必须先备份，再人工应用尚未执行的 003 增量迁移。启动时不生成测试凭证、不重置 ID。
+Compose 的新数据库依次执行 001、003、004、005。已有数据库不会重新执行初始化目录，必须按 [v0.2 迁移手册](v02-migration.md) 备份、扩展、停机切换并核对数据。启动时不生成测试凭证、不重置 ID。
 
 | 环境变量 | 用途 | 默认 |
 |---|---|---|
 | PGHOST / PGPORT | PostgreSQL 地址 | 127.0.0.1 / 5432 |
 | PGDATABASE / PGUSER / PGPASSWORD | 数据库凭证 | 需要按部署配置 |
 | LINKLET_ENCRYPTION_KEY | AES-GCM 32 字节密钥的 64 位十六进制表示 | 必填 |
-| SEGMENT_SIZE | 号段大小 | 1000 |
-| CACHE_TTL | 最大缓存秒数 | 300 |
-| CACHE_SYNC_INTERVAL | 修订号同步秒数 | 0.5 |
+| SEGMENT_SIZE | 显式覆盖号段大小 | 未设置时使用数据库 step=1000 |
+| CACHE_TTL | 最大缓存秒数，必须为正有限数 | 300 |
+| CACHE_SYNC_INTERVAL | 修订号同步秒数，必须为正有限数 | 0.5 |
 | PGPOOLSIZE | 每 Worker 的池容量 | 10 |
 
 同实例停用即时失效，跨实例默认约 1 秒内传播。同步信息超时后绕过缓存；缓存 TTL 还受链接到期时间限制。
@@ -51,3 +51,5 @@ kubectl apply -f deploy/k8s/deployment.yaml
 先备份数据库。在一次性数据库中可以依次运行 `003_integrity_down.sql`、`001_init_down.sql` 验证迁移逆序；001_down 会删除表，不用于保留业务数据的生产回滚。
 
 应用回滚可使用前一镜像和 `kubectl rollout undo`，但旧版本无法读取新 AES-GCM 凭证。必须同时规划凭证兼容性和数据库约束，不能只回滚镜像后假定业务恢复。
+
+005 后禁止直接回滚旧应用；共享授权与域名状态语义已改变，按迁移手册前向修复或受控恢复备份。

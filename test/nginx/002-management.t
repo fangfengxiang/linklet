@@ -65,8 +65,10 @@ accepted
 --- test_code
 local status, body = a.request("POST","/api/v1/shorten/gen",'{"target_url":"https://example.com","scene_id":1}')
 assert(status == 200 and body.data.short_url == "https://s.example.com/" .. body.data.code)
-assert(a.deps.db:query("UPDATE sl_domain_entry SET status = 2 WHERE id = 1"))
-assert(a.request("POST","/api/v1/shorten/gen",'{"target_url":"https://example.com","scene_id":1}') == 400)
+assert(a.deps.db:query("UPDATE sl_scene SET domain_entry_id=2 WHERE scene_id=1"))
+assert(a.deps.domain_entry_model:disable(1))
+assert(a.deps.db:query("UPDATE sl_scene SET status=2 WHERE scene_id=1"))
+assert(a.request("POST","/api/v1/shorten/gen",'{"target_url":"https://example.com","scene_id":1}') == 404)
 --- request
 GET /t
 --- response_body

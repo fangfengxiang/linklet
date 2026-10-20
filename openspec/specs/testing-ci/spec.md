@@ -40,7 +40,7 @@ The system SHALL pass luacheck linting with zero errors.
 #### Scenario: No lint errors in source
 
 - **GIVEN** all source files are written
-- **WHEN** `luacheck src/ spec/` is executed
+- **WHEN** `luacheck lib/ src/ spec/` is executed
 - **THEN** the exit code SHALL be 0
 - **AND** there SHALL be no warnings or errors
 
@@ -52,7 +52,7 @@ The system SHALL have a GitHub Actions CI pipeline that runs lint, tests, and co
 
 - **GIVEN** code is pushed to any branch
 - **WHEN** the GitHub Actions workflow triggers
-- **THEN** luacheck SHALL run on src/ and spec/
+- **THEN** luacheck SHALL run on lib/, src/ and spec/
 - **AND** busted tests SHALL run with coverage
 - **AND** luacov coverage report SHALL be generated
 
@@ -112,3 +112,14 @@ Acceptance SHALL run Test::Nginx::Socket::Lua against real OpenResty and a dispo
 - **GIVEN** a failing runtime assertion
 - **WHEN** the acceptance job runs
 - **THEN** its exit code SHALL be nonzero without an ignore-failure fallback
+
+### Requirement: Regression verification
+系统 SHALL 保留 Busted、Test::Nginx、PostgreSQL 集成测试及现有 CI 质量门槛，覆盖授权、迁移、解析、缓存失效、并发发号。
+#### Scenario: Regression suite
+- **GIVEN** 变更准备合并
+- **WHEN** 运行项目现有 lint/test/acceptance 命令
+- **THEN** SHALL 无新增失败，迁移前后数据核对通过
+#### Scenario: Unsafe migration
+- **GIVEN** 迁移核对发现 scene_id、code 或 current_max 不一致
+- **WHEN** 进入切流阶段
+- **THEN** 发布 SHALL 被阻止

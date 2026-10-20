@@ -52,7 +52,7 @@ accepted
 
 === TEST 3: AES-GCM uses random nonce, detects tampering, refuses legacy XOR and missing key
 --- test_code
-local c = require("lib.crypto")
+local c = require("linklet.crypto")
 local one = assert(c.encrypt(a.sk))
 local two = assert(c.encrypt(a.sk))
 assert(one ~= two and one:sub(1,3) == "v1:" and c.decrypt(one) == a.sk)

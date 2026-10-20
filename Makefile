@@ -6,7 +6,8 @@ LUACHECK ?= luacheck
 install:
 	$(LUAROCKS) make --local
 lint:
-	$(LUACHECK) src/ spec/ --codes
+	python3 scripts/check_boundaries.py
+	$(LUACHECK) lib/ src/ spec/ --codes
 test:
 	$(BUSTED) spec/
 acceptance:
@@ -18,10 +19,10 @@ coverage:
 	: > luacov.stats.out
 	$(BUSTED) spec/ --coverage
 	LINKLET_COVERAGE=1 bash scripts/test_nginx.sh
-	$(LUACOV) src/
+	$(LUACOV)
 	python3 scripts/check_coverage.py
 benchmark:
-	LUA_PATH='src/?.lua;;' lua test/benchmark/obfuscator_bench.lua
+	LUA_PATH='lib/?.lua;src/?.lua;;' lua test/benchmark/obfuscator_bench.lua
 build:
 	docker build --target runtime -t linklet:latest .
 docs-check:
