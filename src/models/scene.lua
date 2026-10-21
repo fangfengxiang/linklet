@@ -1,1 +1,1 @@
-return require("linklet.repository.scene")
+return require("linklet.repository.group")

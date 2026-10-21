@@ -12,7 +12,7 @@ The system SHALL provide a POST endpoint to create a short link.
 
 #### Scenario: Create with valid parameters
 
-- **GIVEN** an authenticated request with target_url and scene_id
+- **GIVEN** an authenticated request with target_url and group_id
 - **WHEN** POST /api/v1/shorten/create is called
 - **THEN** the system SHALL generate a short code
 - **AND** the system SHALL persist the link record to PostgreSQL
@@ -25,9 +25,9 @@ The system SHALL provide a POST endpoint to create a short link.
 - **WHEN** POST /api/v1/shorten/create is called
 - **THEN** the response SHALL have status code 400 with error message
 
-#### Scenario: Invalid scene_id
+#### Scenario: Invalid group_id
 
-- **GIVEN** a request with a scene_id that is not authorized for the authenticated tenant
+- **GIVEN** a request with a group_id that is not authorized for the authenticated tenant
 - **WHEN** POST /api/v1/shorten/create is called
 - **THEN** the response SHALL have status code 403 with error message
 
@@ -37,15 +37,15 @@ The system SHALL provide a POST endpoint to create a short link and return the f
 
 #### Scenario: Generate with valid parameters
 
-- **GIVEN** an authenticated request with target_url and scene_id
+- **GIVEN** an authenticated request with target_url and group_id
 - **WHEN** POST /api/v1/shorten/gen is called
 - **THEN** the system SHALL create the link (same as /api/v1/shorten/create)
-- **AND** the system SHALL resolve the scene's domain entry
+- **AND** the system SHALL resolve the group's domain entry
 - **AND** the response SHALL include both code and short_url (domain + "/" + code)
 
 #### Scenario: Domain entry not found
 
-- **GIVEN** a scene_id whose domain entry is deleted or not configured
+- **GIVEN** a group_id whose domain entry is deleted or not configured
 - **WHEN** POST /api/v1/shorten/gen is called
 - **THEN** the system SHALL return an error indicating domain is not available
 - **AND** the system SHALL NOT retry link creation
@@ -87,11 +87,11 @@ The system SHALL return all management API responses in a unified JSON format.
 
 ### Requirement: Tenant-constrained disable and endpoint validation
 
-Disable SHALL accept only the required code parameter and SHALL update only links in scenes currently granted to the authenticated tenant.
+Disable SHALL accept only the required code parameter and SHALL update only links in groups currently granted to the authenticated tenant.
 
 #### Scenario: Foreign tenant code
 
-- **GIVEN** tenant A created an active link and tenant B is authenticated without that scene grant
+- **GIVEN** tenant A created an active link and tenant B is authenticated without that group grant
 - **WHEN** tenant B attempts to disable that code
 - **THEN** the response SHALL be 404 and the link SHALL remain active
 
@@ -102,7 +102,7 @@ Disable SHALL accept only the required code parameter and SHALL update only link
 - **THEN** the response SHALL be 400 JSON with data:null, not 500
 
 ### Requirement: Single short-link creation path
-`create` 与 `gen` SHALL 复用同一个创建用例；`gen` 只增加完整短 URL 输出。创建 SHALL 校验租户 Scene 授权、Scene 启用及 DomainEntry 已投产。
+`create` 与 `gen` SHALL 复用同一个创建用例；`gen` 只增加完整短 URL 输出。创建 SHALL 校验租户 Group 授权、Group 启用及 DomainEntry 已投产。
 #### Scenario: Create and gen parity
 - **GIVEN** 同一有效输入和授权
 - **WHEN** 分别调用 create 与 gen
@@ -112,8 +112,15 @@ Disable SHALL accept only the required code parameter and SHALL update only link
 - **WHEN** 尝试修改 target_url
 - **THEN** 系统 SHALL 拒绝修改
 ### Requirement: Terminal disable
-短链停用 SHALL 为终态，且停用操作 SHALL 重新验证调用租户对所属 Scene 的授权。
+短链停用 SHALL 为终态，且停用操作 SHALL 重新验证调用租户对所属 Group 的授权。
 #### Scenario: Unauthorized disable
-- **GIVEN** 调用租户无 Scene 授权
+- **GIVEN** 调用租户无 Group 授权
 - **WHEN** 请求停用某短码
 - **THEN** 操作 SHALL 被拒绝，短链仍有效
+
+### Requirement: Separate platform and tenant security boundaries
+租户 `/api/v1/shorten/*` SHALL 保留 AK/SK 认证；平台 `/api/v1/admin/*` SHALL 仅向内部运维网络开放，不使用租户身份代替管理员会话。React Admin 的会话认证 SHALL 单独设计，浏览器 SHALL NOT 收到租户 SK。
+#### Scenario: External platform administration request
+- **GIVEN** 请求来自平台管理允许网络之外
+- **WHEN** 访问 `/api/v1/admin/*`
+- **THEN** Nginx SHALL 拒绝该请求，不因携带租户签名而放行

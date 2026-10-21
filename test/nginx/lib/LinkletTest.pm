@@ -10,7 +10,7 @@ sub import {
     Test::Nginx::Socket::Lua::add_block_preprocessor(sub {
         my $block = shift;
         my $root = $ENV{LINKLET_ROOT};
-        $block->set_value('main_config', 'env LINKLET_MULTI_A; env LINKLET_MULTI_B; env LINKLET_TEST_PGPORT; env PGHOST; env PGPORT; env PGDATABASE; env PGUSER; env PGPASSWORD; env LINKLET_ENCRYPTION_KEY;' . ($block->main_config || ''));
+        $block->set_value('main_config', 'env LINKLET_COVERAGE_DIR; env LINKLET_MULTI_A; env LINKLET_MULTI_B; env LINKLET_TEST_PGPORT; env PGHOST; env PGPORT; env PGDATABASE; env PGUSER; env PGPASSWORD; env LINKLET_ENCRYPTION_KEY;' . ($block->main_config || ''));
 
         my $coverage = '';
         my $worker = 'if rawget(_G,"linklet_production_test") then require("linklet.app").init_worker() end';

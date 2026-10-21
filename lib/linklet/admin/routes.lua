@@ -88,8 +88,8 @@ function _M.create(deps)
     router:get("/api/v1/shorten/get",deps.auth,function(ctx) return deps.shorten_handler:get(ctx) end)
     local resources={
         domain={create="post",list="get",deploy="put",disable="put"},
-        scene={create="post",list="get",configure="put"},
-        scene_config={set="put",list="get",delete="delete"},
+        group={create="post",list="get",configure="put"},
+        group_config={set="put",list="get",delete="delete"},
         tenant={grant="put",status="put"},
     }
     for resource,actions in pairs(resources) do

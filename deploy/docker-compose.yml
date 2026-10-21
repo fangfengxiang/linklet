@@ -11,6 +11,7 @@ services:
       - ../migrations/003_integrity.sql:/docker-entrypoint-initdb.d/003_integrity.sql:ro
       - ../migrations/004_v02_expand.sql:/docker-entrypoint-initdb.d/004_v02_expand.sql:ro
       - ../migrations/005_v02_switch.sql:/docker-entrypoint-initdb.d/005_v02_switch.sql:ro
+      - ../migrations/006_group_contract.sql:/docker-entrypoint-initdb.d/006_group_contract.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U linklet"]
       interval: 3s

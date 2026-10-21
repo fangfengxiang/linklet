@@ -1,12 +1,12 @@
 ## MODIFIED Requirements
 ### Requirement: Effective link resolution
-Gateway SHALL 根据请求 Host+Code、短链启用状态、expires_at、当前 DomainEntry 状态判定是否跳转；Tenant/Scene 停用 SHALL NOT 使既有有效短链失效。
-#### Scenario: Disabled scene but active link
-- **GIVEN** Scene 停用但 ShortLink 启用、未过期且域名投产
+Gateway SHALL 根据请求 Host+Code、短链启用状态、expires_at、当前 DomainEntry 状态判定是否跳转；Tenant/Group 停用 SHALL NOT 使既有有效短链失效。
+#### Scenario: Disabled group but active link
+- **GIVEN** Group 停用但 ShortLink 启用、未过期且域名投产
 - **WHEN** 请求匹配 Host+Code
 - **THEN** Gateway SHALL 返回 302
 #### Scenario: Host mismatch
-- **GIVEN** 短链 Scene 当前绑定 domain-a
+- **GIVEN** 短链 Group 当前绑定 domain-a
 - **WHEN** 请求使用 domain-b 和同一 code
 - **THEN** Gateway SHALL NOT 重定向到目标地址
 ### Requirement: Unified cached resolution

@@ -1,7 +1,11 @@
 local _M = {}
 function _M.start(root)
     if jit then jit.off() end
-    require("luacov.runner").init({statsfile=root .. "/luacov.stats.out",include={"^lib/linklet/", "^" .. root .. "/lib/linklet/"}})
+    local directory = assert(os.getenv("LINKLET_COVERAGE_DIR"), "coverage output directory missing")
+    require("luacov.runner").init({
+        statsfile=directory .. "/worker-" .. ngx.worker.pid() .. ".out",
+        include={"^lib/linklet/", "^" .. root .. "/lib/linklet/"},
+    })
 end
 function _M.stop(root)
     local runner = require("luacov.runner")

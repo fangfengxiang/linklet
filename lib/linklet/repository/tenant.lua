@@ -4,12 +4,12 @@
 
 local setmetatable = setmetatable
 
-local BaseModel = require("linklet.repository.base")
-local _M = setmetatable({}, {__index = BaseModel})
+local Base = require("linklet.repository.base")
+local _M = setmetatable({}, {__index = Base})
 _M.__index = _M
 
 function _M.new(db)
-    local self = BaseModel.new(db, "sl_tenant")
+    local self = Base.new(db, "sl_tenant")
     return setmetatable(self, _M)
 end
 
@@ -44,16 +44,16 @@ function _M:find_all(limit)
     return self.db:query(sql, limit)
 end
 
-function _M:authorized(id,scene_id)
+function _M:authorized(id,group_id)
     local rows,err=self.db:query([[SELECT 1 FROM sl_tenant WHERE id=$1 AND status=1
-        AND deleted_at IS NULL AND $2::bigint=ANY(scene_ids)]],id,scene_id)
+        AND deleted_at IS NULL AND $2::bigint=ANY(group_ids)]],id,group_id)
     if not rows then return nil,err end
     return rows[1]~=nil
 end
-function _M:grant(id, scene_ids)
+function _M:grant(id, group_ids)
     local ids={}
-    for i,v in ipairs(scene_ids) do ids[i]=tostring(v) end
-    local rows,err=self.db:query([[UPDATE sl_tenant SET scene_ids=$2::bigint[],updated_at=NOW()
+    for i,v in ipairs(group_ids) do ids[i]=tostring(v) end
+    local rows,err=self.db:query([[UPDATE sl_tenant SET group_ids=$2::bigint[],updated_at=NOW()
         WHERE id=$1 AND deleted_at IS NULL RETURNING *]],id,"{"..table.concat(ids,",").."}")
     return rows and rows[1],err
 end

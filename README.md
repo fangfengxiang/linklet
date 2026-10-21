@@ -4,7 +4,7 @@
 
 - 创建、生成完整 URL、不可逆停用短链。
 - AK/SK HMAC 鉴权，AES-256-GCM 加密存储 SK。
-- 租户按 scene_ids 授权，共享管理场景下的短链。
+- 租户按 group_ids 授权，共享管理分组下的短链。
 - PostgreSQL 号段分配，32 位精确混淆与 Base62 短码。
 - 缓存优先解析，状态与过期检查，HTTP 302 跳转。
 - Test::Nginx 在真实 OpenResty/PostgreSQL 中验收。
@@ -28,12 +28,14 @@ curl -f http://127.0.0.1:8080/health
 | GET | `/:code` | 解析并跳转 |
 | POST | `/api/v1/shorten/create` | 创建短码 |
 | POST | `/api/v1/shorten/gen` | 创建完整短链 |
-| PUT | `/api/v1/shorten/disable` | 按当前 Scene 授权停用短链 |
+| PUT | `/api/v1/shorten/disable` | 按当前 Group 授权停用短链 |
 | POST / GET | `/api/v1/admin/tenant/create`、`/list` | 租户管理 |
 | POST / PUT | `/api/v1/admin/credential/create`、`/disable` | 凭证管理 |
 | GET | `/health`、`/health/live` | 就绪与存活检查 |
 
-管理后台默认仅允许 loopback。新增域名、场景、配置和租户授权操作见 [OpenAPI 契约](api/openapi.yaml)。业务 API 需要签名；详细字段与示例见 [API 文档](docs/api.md)。
+管理后台默认仅允许 loopback。新增域名、分组、配置和租户授权操作见 [OpenAPI 契约](api/openapi.yaml)。业务 API 需要签名；详细字段与示例见 [API 文档](docs/api.md)。
+
+Group 有任何短链后冻结域名绑定；短码全局唯一，code、target_url、group_id 不可修改。Admin 与租户 API 的边界及 React 接入方案见 [认证设计](docs/admin-auth.md)。
 
 ## 验收
 

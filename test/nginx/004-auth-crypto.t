@@ -23,10 +23,10 @@ run_tests();
 __DATA__
 === TEST 1: real HMAC rejects body/query tampering and accepts signed query
 --- test_code
-local body = '{"target_url":"https://example.com","scene_id":1}'
+local body = '{"target_url":"https://example.com","group_id":1}'
 assert(a.request("POST","/api/v1/shorten/create",body,{signed_body=body .. " "}) == 401)
-assert(a.request("POST","/api/v1/shorten/create?scene_id=2",'{"target_url":"https://example.com"}',{signed_uri="/api/v1/shorten/create?scene_id=1"}) == 401)
-assert(a.request("POST","/api/v1/shorten/create?scene_id=1",'{"target_url":"https://example.com"}') == 200)
+assert(a.request("POST","/api/v1/shorten/create?group_id=2",'{"target_url":"https://example.com"}',{signed_uri="/api/v1/shorten/create?group_id=1"}) == 401)
+assert(a.request("POST","/api/v1/shorten/create?group_id=1",'{"target_url":"https://example.com"}') == 200)
 --- request
 GET /t
 --- response_body
@@ -36,7 +36,7 @@ accepted
 
 === TEST 2: missing or stale timestamp, wrong signature and disabled credentials return 401
 --- test_code
-local body = '{"target_url":"https://example.com","scene_id":1}'
+local body = '{"target_url":"https://example.com","group_id":1}'
 assert(a.request("POST","/api/v1/shorten/create",body,{no_auth=true}) == 401)
 assert(a.request("POST","/api/v1/shorten/create",body,{no_timestamp=true}) == 401)
 assert(a.request("POST","/api/v1/shorten/create",body,{timestamp="1000"}) == 401)
@@ -76,7 +76,7 @@ accepted
 assert(a.request("POST","/api/v1/shorten/create","{bad}") == 400)
 assert(a.request("POST","/api/v1/shorten/create","true") == 400)
 assert(a.request("POST","/api/v1/shorten/create","[]") == 400)
-local body = require("cjson").encode({target_url="https://example.com",scene_id=1,padding=string.rep("x",32768)})
+local body = require("cjson").encode({target_url="https://example.com",group_id=1,padding=string.rep("x",32768)})
 assert(a.request("POST","/api/v1/shorten/create",body) == 200)
 assert(a.request("POST","/api/v1/shorten/create",body,{signed_body=""}) == 401)
 --- request

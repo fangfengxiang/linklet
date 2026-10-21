@@ -13,7 +13,7 @@ Linklet is a self-hosted short link service that provides:
 - Segment-based ID allocation from PostgreSQL
 - Cache-first resolution gateway (ngx.shared.DICT)
 - Management API with AK/SK HMAC authentication
-- Shared scene authorization through tenant grants
+- Shared group authorization through tenant grants
     ]],
     homepage = "https://github.com/frank/linklet",
     license = "MIT",
@@ -45,6 +45,8 @@ build = {
         ["linklet.app"] = "lib/linklet/app.lua",
         ["linklet.cache.local"] = "lib/linklet/cache/local.lua",
         ["linklet.cache.sync"] = "lib/linklet/cache/sync.lua",
+        ["linklet.core.group"] = "lib/linklet/core/group.lua",
+        ["linklet.admin.errors"] = "lib/linklet/admin/errors.lua",
         ["linklet.core.short_link"] = "lib/linklet/core/short_link.lua",
         ["linklet.core.time"] = "lib/linklet/core/time.lua",
         ["linklet.crypto"] = "lib/linklet/crypto.lua",
@@ -63,8 +65,8 @@ build = {
         ["linklet.repository.base"] = "lib/linklet/repository/base.lua",
         ["linklet.repository.credential"] = "lib/linklet/repository/credential.lua",
         ["linklet.repository.domain_entry"] = "lib/linklet/repository/domain_entry.lua",
-        ["linklet.repository.scene"] = "lib/linklet/repository/scene.lua",
-        ["linklet.repository.scene_config"] = "lib/linklet/repository/scene_config.lua",
+        ["linklet.repository.group"] = "lib/linklet/repository/group.lua",
+        ["linklet.repository.group_config"] = "lib/linklet/repository/group_config.lua",
         ["linklet.repository.short_link"] = "lib/linklet/repository/short_link.lua",
         ["linklet.repository.tenant"] = "lib/linklet/repository/tenant.lua",
         ["admin.credential_handler"] = "src/admin/credential_handler.lua",

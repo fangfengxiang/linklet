@@ -65,7 +65,15 @@ function _M:transaction(fn)
     if not conn then return nil, err end
     local begun, berr = conn:query("BEGIN")
     if not begun then self:_release(conn, false); return nil, berr end
-    local ok, result, ferr = pcall(fn, conn)
+    -- Transaction queries use the same scalar parameter contract as query().
+    local session = {}
+    function session.query(_, sql, ...)
+        local statement = interpolate(conn, sql, ...)
+        local rows, qerr = conn:query(statement)
+        if not rows then return nil, qerr end
+        return rows
+    end
+    local ok, result, ferr = pcall(fn, session)
     if not ok or result == nil or result == false then
         local rolled = conn:query("ROLLBACK")
         self:_release(conn, rolled ~= nil)

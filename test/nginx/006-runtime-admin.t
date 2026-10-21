@@ -58,13 +58,13 @@ accepted
 --- no_error_log
 [error]
 
-=== TEST 3: package entry point loads and inherited domain update is rejected by the database
+=== TEST 3: package entry point loads; domain repository exposes explicit operations
 --- test_code
 assert(require("linklet") == require("linklet.app"))
-local result = a.deps.domain_entry_model:update({domain="mutated.example.com"},"id = $2",{1})
-assert(not result)
-local row = a.deps.scene_model:find_by_id_with_domain(1)
-assert(row.scene_id == 1 and row.domain == "s.example.com")
+assert(a.deps.domain_entry_model.update == nil)
+assert(a.deps.domain_entry_model:find_by_id(1).domain == "s.example.com")
+local row = a.deps.group_model:find_by_id_with_domain(1)
+assert(row.group_id == 1 and row.domain == "s.example.com")
 --- request
 GET /t
 --- response_body

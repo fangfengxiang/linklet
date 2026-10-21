@@ -14,7 +14,7 @@ _M.__index = _M
 --   - id_generator: 发号器实例
 --   - obfuscator: 短码生成器
 --   - link_model: 短链模型
---   - scene_model: 场景模型
+--   - group_model: 分组模型
 --   - cache: 缓存实例
 --   - response: 响应工具
 function _M.new(deps)
@@ -22,7 +22,7 @@ function _M.new(deps)
     self.id_generator = deps.id_generator
     self.obfuscator = deps.obfuscator
     self.link_model = deps.link_model
-    self.scene_model = deps.scene_model
+    self.group_model = deps.group_model
     self.cache = deps.cache
     self.use_case = require("linklet.core.short_link").new(deps)
     return self
@@ -35,7 +35,7 @@ end
 local function create(self, ctx, full_url)
     local params = ctx.params or ctx.request:all_params()
     local result, err = self.use_case:create(ctx.tenant_id, params)
-    if not result then return ctx.response:error_response(err.code,err.message,err.status) end
+    if not result then return require("linklet.admin.errors").respond(ctx.response,err) end
     local data = {code=result.code}
     if full_url then data.short_url = "https://" .. result.domain .. "/" .. result.code end
     return ctx.response:success(data)

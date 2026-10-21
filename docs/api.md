@@ -4,7 +4,7 @@
 
 ### `GET /:code`
 
-Resolve a short code under the Scene current deployed domain. Host mismatch returns 404. Tenant/Scene status does not block existing links.
+Resolve a short code under the Group current deployed domain. Host mismatch returns 404. Tenant/Group status does not block existing links.
 
 **Request**
 
@@ -49,7 +49,7 @@ Create a short link. Returns the generated short code.
 ```json
 {
   "target_url": "https://example.com/page",
-  "scene_id": 1,
+  "group_id": 1,
   "expires_at": "2099-12-31T23:59:59Z"
 }
 ```
@@ -57,7 +57,7 @@ Create a short link. Returns the generated short code.
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `target_url` | Yes | string | Target URL (max 2048 chars) |
-| `scene_id` | Yes | number | Scene business ID (1..4294967295) |
+| `group_id` | Yes | number | Group business ID (1..4294967295) |
 | `expires_at` | No | string | Future RFC3339 timestamp; omitted or null = permanent |
 
 **Response**
@@ -77,9 +77,9 @@ Create a short link. Returns the generated short code.
 | HTTP | Error Code | Message |
 |------|------------|---------|
 | 400 | 4001 | target_url is required |
-| 400 | 4002 | scene_id is required |
-| 403 | 4004 | scene not authorized |
-| 404 | 4003 | scene not found or inactive |
+| 400 | 4002 | group_id is required |
+| 403 | 4004 | group not authorized |
+| 404 | 4003 | group not found or inactive |
 | 500 | 500 | internal server error |
 
 ### `POST /api/v1/shorten/gen`
@@ -105,7 +105,7 @@ Create a short link and return the full short URL (domain + code).
 
 | HTTP | Error Code | Message |
 |------|------------|---------|
-| 400 | 4005 | domain not configured for scene |
+| 400 | 4005 | domain not configured for group |
 
 ### `PUT /api/v1/shorten/disable`
 
@@ -152,7 +152,7 @@ The signature is computed as HMAC-SHA1 of the following string:
 ```
 
 - `METHOD`: HTTP method (GET, POST, PUT, DELETE)
-- `REQUEST_URI`: Raw request path and query string (e.g., `/api/v1/shorten/create?scene_id=1`)
+- `REQUEST_URI`: Raw request path and query string (e.g., `/api/v1/shorten/create?group_id=1`)
 - `TIMESTAMP`: Unix epoch from `X-Timestamp` header
 - `BODY`: Raw request body (JSON string)
 
@@ -213,7 +213,7 @@ Only JSON objects are accepted for write requests. Timestamp is mandatory. Sign 
 import base64, hashlib, hmac, time
 method = "POST"
 uri = "/api/v1/shorten/create"
-body = '{"target_url":"https://example.com/page","scene_id":1}'
+body = '{"target_url":"https://example.com/page","group_id":1}'
 timestamp = str(int(time.time()))
 message = "\n".join([method, uri, timestamp, body]).encode()
 signature = base64.b64encode(hmac.new(secret_key.encode(), message, hashlib.sha1).digest()).decode()
@@ -225,18 +225,18 @@ The full machine-readable contract is [api/openapi.yaml](../api/openapi.yaml). A
 
 | Method | Resource/action | Parameters |
 |---|---|---|
-| PUT | tenant/grant | id, scene_ids array (deduplicated; all scenes must exist) |
+| PUT | tenant/grant | id, group_ids array (deduplicated; all groups must exist) |
 | PUT | tenant/status | id, status 1/2 |
 | POST | domain/create | domain hostname; optional tag, description |
 | GET | domain/list | none; first 100 |
-| PUT | domain/deploy, domain/disable | id; new→deployed→offline, bound scenes prevent offline |
-| POST | scene/create | scene_id, name, domain_entry_id |
-| GET | scene/list | tenant_id query, authorized scenes |
-| PUT | scene/configure | scene_id; domain_entry_id and/or status 1/2 |
-| PUT | scene_config/set | scene_id, config_key, config_value; optional description |
-| GET | scene_config/list | scene_id query |
-| DELETE | scene_config/delete | scene_id, config_key JSON body |
+| PUT | domain/deploy, domain/disable | id; new→deployed→offline, bound groups prevent offline |
+| POST | group/create | group_id, name, domain_entry_id |
+| GET | group/list | tenant_id query, authorized groups |
+| PUT | group/configure | group_id; domain_entry_id and/or status 1/2; domain changes require no links |
+| PUT | group_config/set | group_id, config_key, config_value; optional description |
+| GET | group_config/list | group_id query |
+| DELETE | group_config/delete | group_id, config_key JSON body |
 
-`GET /api/v1/shorten/get?code=...` requires AK/SK headers and current Scene authorization. Unauthorized/missing links return 404. Two tenants granted the same Scene may create, read and disable its links. Revocation affects future management operations, never historical redirects.
+`GET /api/v1/shorten/get?code=...` requires AK/SK headers and current Group authorization. Unauthorized/missing links return 404. Two tenants granted the same Group may create, read and disable its links. Revocation affects future management operations, never historical redirects.
 
-Both create and gen require a deployed domain. Bad expiration is 400; creation requires a future timestamp, while existing expired records resolve to 410. Domain state conflicts are 409. Rebinding changes the accepted Host for all links in the Scene; release implications are documented in [the migration guide](v02-migration.md). SceneConfig is a KV store; parameter forwarding is not yet implemented.
+Both create and gen require a deployed domain. Bad expiration is 400; creation requires a future timestamp, while existing expired records resolve to 410. Domain state conflicts are 409. Rebinding a Group with any links (including disabled/expired links) returns 409; release implications are documented in [the migration guide](v02-migration.md). GroupConfig is a KV store; parameter forwarding is not yet implemented.

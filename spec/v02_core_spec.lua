@@ -27,35 +27,39 @@ describe("v0.2 domain contracts",function()
     before_each(function()
         calls=0
         core=Core.new({now=function() return 100 end,
-            scene_model={find_by_id_with_domain=function()
+            group_model={find_by_id_with_domain=function()
                 return {status=1,domain_status=2,domain="s.example.com"} end},
             tenant_model={authorized=function(_,id) return id==1 or id==2 end},
             id_generator={next_id=function() return 10 end},obfuscator={generate=function() return "code10" end},
-            link_model={create=function(_,data) calls=calls+1;return data end}})
+            link_model={create=function(_,data) calls=calls+1;data.domain="confirmed.example.com";return data end}})
     end)
-    it("allows both granted tenants to create in a shared scene",function()
+    it("allows both granted tenants to create in a shared group",function()
         for _,id in ipairs({1,2}) do
-            assert.equals("code10",assert(core:create(id,{scene_id=7,target_url="https://example.com"})).code)
+            assert.equals("code10",assert(core:create(id,{group_id=7,target_url="https://example.com"})).code)
         end
         assert.equals(2,calls)
-        local row,err=core:create(3,{scene_id=7,target_url="https://example.com"})
-        assert.is_nil(row);assert.equals(403,err.status);assert.equals(2,calls)
+        local row,err=core:create(3,{group_id=7,target_url="https://example.com"})
+        assert.is_nil(row);assert.equals("group_forbidden",err.kind);assert.is_nil(err.status);assert.equals(2,calls)
     end)
-    it("rejects unsafe URLs, invalid scene IDs, malformed or expired timestamps before allocating",function()
-        for _,p in ipairs({{scene_id=1,target_url="javascript:alert(1)"},
-            {scene_id=0,target_url="https://example.com"},{scene_id=4294967296,target_url="https://example.com"},
-            {scene_id=1,target_url="https://example.com\r\nx: y"},
-            {scene_id=1,target_url="https://example.com",expires_at="1970-01-01T00:00:00Z"},
-            {scene_id=1,target_url="https://example.com",expires_at=false}}) do
-            local row,err=core:create(1,p);assert.is_nil(row);assert.equals(400,err.status)
+    it("rejects unsafe URLs, invalid group IDs, malformed or expired timestamps before allocating",function()
+        for _,p in ipairs({{group_id=1,target_url="javascript:alert(1)"},
+            {group_id=0,target_url="https://example.com"},{group_id=4294967296,target_url="https://example.com"},
+            {group_id=1,target_url="https://example.com\r\nx: y"},
+            {group_id=1,target_url="https://example.com",expires_at="1970-01-01T00:00:00Z"},
+            {group_id=1,target_url="https://example.com",expires_at=false}}) do
+            local row,err=core:create(1,p);assert.is_nil(row);assert.is_string(err.kind);assert.is_nil(err.status)
         end
         assert.equals(0,calls)
-        assert(core:create(1,{scene_id=1,target_url="https://example.com",expires_at="2099-01-01T00:00:00Z"}))
+        assert(core:create(1,{group_id=1,target_url="https://example.com",expires_at="2099-01-01T00:00:00Z"}))
     end)
     it("surfaces storage failures without treating them as missing data",function()
         core.tenant_model.authorized=function() return nil,"db down" end
-        local _,err=core:create(1,{scene_id=1,target_url="https://example.com"})
-        assert.equals(500,err.status)
+        local _,err=core:create(1,{group_id=1,target_url="https://example.com"})
+        assert.equals("unavailable",err.kind)
+    end)
+    it("returns the domain confirmed by creation, even if the initial read was stale",function()
+        local row=assert(core:create(1,{group_id=7,target_url="https://example.com"}))
+        assert.equals("confirmed.example.com",row.domain)
     end)
     it("keeps explicit segments out of the worker pool and uses database step by default",function()
         local cursor=0

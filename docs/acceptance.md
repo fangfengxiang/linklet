@@ -10,8 +10,8 @@
 | Worker 协程 | 仅分配慢路径使用 semaphore；20 协程不重复 | `001-id-generator.t` TEST 2 |
 | 短码容量 | 用户确认 32 位；16 位分段精确模乘；超限拒绝 | `001-id-generator.t` TEST 3–4 |
 | 停用参数 | disable 只要求 code；重复停用返回 404 | `002-management.t` TEST 1 |
-| 多租户停用 | UPDATE 按当前 tenant.scene_ids 授权限定，未授权租户不能修改 | `002-management.t` TEST 2 |
-| 参数及响应 | 参数错误 400、场景越权 403、JSON data:null | `002-management.t` TEST 3 |
+| 多租户停用 | UPDATE 按当前 tenant.group_ids 授权限定，未授权租户不能修改 | `002-management.t` TEST 2 |
+| 参数及响应 | 参数错误 400、分组越权 403、JSON data:null | `002-management.t` TEST 3 |
 | 参数类型与数据库错误 | false/数组字段返回 400；数据库失败不伪装成 404 | `002-management.t` TEST 5 |
 | 完整短链 | 补 HTTP(S) scheme；停用域名不生成链接 | `002-management.t` TEST 4 |
 | 解析缓存 | 冷缓存写入；热缓存不查模型；停用后 410 | `003-resolution.t` TEST 1 |
@@ -28,7 +28,7 @@
 | 数据不变量 | 当前绑定域名、状态、域名不可变、短码永久保留 | `005-database-models.t` TEST 3 |
 | 健康检查 | readiness 查询数据库；liveness 独立 | `006-runtime-admin.t` TEST 1 |
 | 管理后台 | 租户/安全凭证创建、列表、停用闭环 | `006-runtime-admin.t` TEST 2 |
-| 包与模型 | linklet 包入口；继承更新仍受数据库约束 | `006-runtime-admin.t` TEST 3 |
+| 包与模型 | linklet 包入口；显式 Repository 接口 | `006-runtime-admin.t` TEST 3 |
 | 生产初始化 | 提取实际 init 配置；保留环境变量；定时器工作 | `007-production-init.t` TEST 1 |
 
 ## 执行
@@ -60,27 +60,29 @@ make coverage
 
 最终 `make acceptance-docker` 全流程退出码为 0：
 
-- Busted：150 项通过，无失败/错误；luacheck：72 个文件，0 警告、0 错误。
-- 单实例 Test::Nginx：8 个文件、96 个断言通过。
+- Busted：143 项通过，无失败/错误；luacheck：74 个文件，0 警告、0 错误。
+- 单实例 Test::Nginx：9 个文件、108 个断言通过，含两个真实 Worker。
 - 多实例 Test::Nginx：1 个文件、3 个断言通过，真实生产镜像共享 ID、独立缓存失效。
-- 项目源码合并覆盖率：94.50%，门槛仍为 80%；仅统计 lib/linklet，排除 OpenResty 第三方 lualib。
-- 旧 001/003 正向与逆序回滚、004 扩展、005 切换：通过；缺少域名会阻断切换且无部分状态转换。
-- 历史短码/URL/Scene/AK/current_max 快照一致，旧应用扩展期间新增 Scene 获授权；七张基础表、旧域名映射及凭证密文保留：通过。
+- 项目源码合并覆盖率：94.66%，门槛仍为 80%；仅统计 lib/linklet，排除 OpenResty 第三方 lualib。
+- 旧 001/003 正向与逆序回滚、004 扩展、005 切换、006 Group 迁移：通过；缺少域名会阻断切换且无部分状态转换。
+- 历史短码/URL/Scene→Group ID/AK/current_max 快照一致，旧应用扩展期间新增 Group 获授权；七张基础表、旧域名映射及凭证密文保留：通过。
 - PostgreSQL 16 dump/restore 到独立数据库、快照对比：通过。
 - LuaRocks 真实安装及安装后的 require("linklet")、Core/Admin/Gateway 依赖边界检查：通过。
 - OpenSpec `validate --all --strict`：10 项通过；OpenAPI YAML：23 条路径/操作，operationId 唯一且业务接口认证完整；部署/CI YAML 和文档链接检查通过。
 
-新增 SDD 场景在 `008-v02-contracts.t`：
+新增 SDD 用例在 `008-v02-contracts.t`：
 
-| 场景 | 证据 |
+| 分组 | 证据 |
 |---|---|
-| 共享 Scene 创建/读取/停用，撤权后拒绝管理 | TEST 1 |
-| Host 隔离，Tenant/Scene 停用后永久短链仍解析 | TEST 2 |
-| Scene 改绑旧 Host 404、新 Host 302、独立缓存同步 | TEST 3 |
+| 共享 Group 创建/读取/停用，撤权后拒绝管理 | TEST 1 |
+| Host 隔离，Tenant/Group 停用后永久短链仍解析 | TEST 2 |
+| 已有短链改绑拒绝、停用/到期仍冻结、软删除不可绕过 | TEST 3 |
 | 域名生命周期、配置与授权管理 API、负向校验 | TEST 4 |
-| 域名下线与并发 Scene 绑定互斥 | TEST 5 |
+| 域名下线与并发 Group 绑定互斥 | TEST 5 |
 | next_ids/allocate_segment 混合并发不重叠、游标不可回退 | TEST 6 |
 | create/gen 过期输入一致拒绝、凭证不可原地修改/删除复用 | TEST 7 |
+| 首次创建先提交则并发改绑被拒绝 | TEST 8 |
+| 改绑先提交则 gen 返回插入事务确认的新域名 | TEST 9 |
 
 ## Review 修复记录
 
@@ -99,6 +101,14 @@ make coverage
 - 正整数 ID 最大 4294967295。号段跨越上限会被拒绝；剩余不足一个号段时可调整段大小，不会回绕。
 - 黄金比例混淆可逆，不提供密码学不可预测性；公开短码不是权限凭证。
 - 同实例停用即时切换缓存 generation。默认跨实例同步窗口为 1 秒，属于有界传播；正在执行的旧请求可完成。定时器或数据库不可用时，同步过期会绕过缓存。
-- `003-resolution.t` 验证独立 shared dict；`007-production-init.t` 验证定时器；`multi-instance/001-runtime.t` 验证两台真实容器。此结果不等于 Kubernetes 集群压力验收。
+- `003-resolution.t` 验证独立 shared dict、TTL 和同步失败后的 DB 降级；`009-workers.t` 通过响应头中的真实进程 ID 验证两个 Worker 都停止重定向；`007-production-init.t` 验证定时器；`multi-instance/001-runtime.t` 验证两台真实容器。此结果不等于 Kubernetes 集群压力验收。
 - HTTP 签名时间窗口为 300 秒，不保证窗口内恰好执行一次。
 - 本地测试、镜像与配置验证不等于远程 GitHub Actions 已运行或生产已部署。
+
+## Group 收敛补充
+
+006 在空库初始化及历史数据升级路径验证七表结构、业务 ID、配置、授权、短码/URL、凭证密文及游标保留。已有短链的软删除分组阻断迁移，验证事务回滚后仍保持旧表名。001–005 保持原样。
+
+新加入双 Worker 用例后，验收曾暴露两个测试基础设施问题：夹具重置修订号产生跨实例 ABA，现已在隔离夹具中保持修订号递增；多个 Worker 同时写 LuaCov 文件丢失统计，现已改为独立文件、退出后合并。80% 源码覆盖率门槛保持不变。删除通用 Model 写接口时移除对应的旧通用 CRUD 单测，业务约束继续由数据库和运行时用例验收。
+
+平台管理继续限定内部网络；多实例测试从另一容器携带租户签名访问管理路径仍为 403。React 登录/BFF 未实现，后续方案见 [安全边界](admin-auth.md)。旧 require 转发和 sl_link 运维视图仍为迁移审计保留，不提供旧 Scene HTTP 字段或路径兼容。

@@ -16,7 +16,10 @@ location /t {
         local second = {host=os.getenv("LINKLET_MULTI_B") or "runtime-b",port=80}
         assert(a.request("GET","/health",nil,first) == 200)
         assert(a.request("GET","/health",nil,second) == 200)
-        local body = '{"target_url":"https://example.com/multi-instance","scene_id":1}'
+        -- These requests originate outside each runtime's loopback boundary.
+        assert(a.request("GET","/api/v1/admin/tenant/list",nil,first)==403)
+        assert(a.request("GET","/api/v1/admin/tenant/list",nil,second)==403)
+        local body = '{"target_url":"https://example.com/multi-instance","group_id":1}'
         local status, response = a.request("POST","/api/v1/shorten/create",body,first)
         assert(status == 200, "create on first instance failed")
         local code = response.data.code

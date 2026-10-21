@@ -8,8 +8,8 @@ paths:
   /api/v1/shorten/create:
     post:
       operationId: post_api_v1_shorten_create
-      description: 'Shared creation rules: active tenant with scene grant, enabled
-        scene, deployed domain. Returns data.code.'
+      description: 'Shared creation rules: active tenant with group grant, enabled
+        group, deployed domain. Returns data.code.'
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -54,7 +54,7 @@ paths:
                   format: uri
                   maxLength: 2048
                   pattern: ^https?://
-                scene_id:
+                group_id:
                   type: integer
                   minimum: 1
                   maximum: 4294967295
@@ -66,7 +66,7 @@ paths:
                   description: Future RFC3339 timestamp; omitted/null means permanent
               required:
               - target_url
-              - scene_id
+              - group_id
       security:
       - AccessKey: []
         Signature: []
@@ -74,8 +74,8 @@ paths:
   /api/v1/shorten/gen:
     post:
       operationId: post_api_v1_shorten_gen
-      description: 'Shared creation rules: active tenant with scene grant, enabled
-        scene, deployed domain. Returns data.code and data.short_url.'
+      description: 'Shared creation rules: active tenant with group grant, enabled
+        group, deployed domain. Returns data.code and data.short_url.'
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -117,7 +117,7 @@ paths:
   /api/v1/shorten/disable:
     put:
       operationId: put_api_v1_shorten_disable
-      description: Terminal disable; rechecks current tenant scene grant. Missing/unauthorized/already
+      description: Terminal disable; rechecks current tenant group grant. Missing/unauthorized/already
         disabled returns 404.
       responses:
         '200':
@@ -168,7 +168,7 @@ paths:
   /api/v1/shorten/get:
     get:
       operationId: get_api_v1_shorten_get
-      description: Read link under current scene grant; unauthorized is 404.
+      description: Read link under current group grant; unauthorized is 404.
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -338,7 +338,7 @@ paths:
                   type: integer
                   minimum: 1
                   maximum: 9007199254740991
-                scene_ids:
+                group_ids:
                   type: array
                   maxItems: 10000
                   items:
@@ -347,7 +347,7 @@ paths:
                     maximum: 4294967295
               required:
               - id
-              - scene_ids
+              - group_ids
   /api/v1/admin/tenant/status:
     put:
       operationId: put_api_v1_admin_tenant_status
@@ -586,7 +586,7 @@ paths:
   /api/v1/admin/domain/deploy:
     put:
       operationId: put_api_v1_admin_domain_deploy
-      description: Domain lifecycle 1 new -> 2 deployed -> 3 offline. Bound scenes
+      description: Domain lifecycle 1 new -> 2 deployed -> 3 offline. Bound groups
         prevent offline with 409.
       responses:
         '200':
@@ -633,7 +633,7 @@ paths:
   /api/v1/admin/domain/disable:
     put:
       operationId: put_api_v1_admin_domain_disable
-      description: Domain lifecycle 1 new -> 2 deployed -> 3 offline. Bound scenes
+      description: Domain lifecycle 1 new -> 2 deployed -> 3 offline. Bound groups
         prevent offline with 409.
       responses:
         '200':
@@ -677,10 +677,10 @@ paths:
                   maximum: 9007199254740991
               required:
               - id
-  /api/v1/admin/scene/create:
+  /api/v1/admin/group/create:
     post:
-      operationId: post_api_v1_admin_scene_create
-      description: /api/v1/admin/scene/create
+      operationId: post_api_v1_admin_group_create
+      description: /api/v1/admin/group/create
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -717,7 +717,7 @@ paths:
             schema:
               type: object
               properties:
-                scene_id:
+                group_id:
                   type: integer
                   minimum: 1
                   maximum: 4294967295
@@ -730,13 +730,13 @@ paths:
                   minimum: 1
                   maximum: 9007199254740991
               required:
-              - scene_id
+              - group_id
               - name
               - domain_entry_id
-  /api/v1/admin/scene/list:
+  /api/v1/admin/group/list:
     get:
-      operationId: get_api_v1_admin_scene_list
-      description: /api/v1/admin/scene/list
+      operationId: get_api_v1_admin_group_list
+      description: /api/v1/admin/group/list
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -774,11 +774,11 @@ paths:
           type: integer
           minimum: 1
           maximum: 9007199254740991
-  /api/v1/admin/scene/configure:
+  /api/v1/admin/group/configure:
     put:
-      operationId: put_api_v1_admin_scene_configure
-      description: Requires status or domain_entry_id. Rebinding changes Host accepted
-        for existing links.
+      operationId: put_api_v1_admin_group_configure
+      description: Requires status or domain_entry_id. Rebinding requires a group with no links;
+        any disabled or expired link also freezes the domain (409).
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -815,7 +815,7 @@ paths:
             schema:
               type: object
               properties:
-                scene_id:
+                group_id:
                   type: integer
                   minimum: 1
                   maximum: 4294967295
@@ -829,11 +829,11 @@ paths:
                   minimum: 1
                   maximum: 9007199254740991
               required:
-              - scene_id
-  /api/v1/admin/scene_config/set:
+              - group_id
+  /api/v1/admin/group_config/set:
     put:
-      operationId: put_api_v1_admin_scene_config_set
-      description: /api/v1/admin/scene_config/set
+      operationId: put_api_v1_admin_group_config_set
+      description: /api/v1/admin/group_config/set
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -870,7 +870,7 @@ paths:
             schema:
               type: object
               properties:
-                scene_id: &id004
+                group_id: &id004
                   type: integer
                   minimum: 1
                   maximum: 4294967295
@@ -885,13 +885,13 @@ paths:
                   type: string
                   maxLength: 255
               required:
-              - scene_id
+              - group_id
               - config_key
               - config_value
-  /api/v1/admin/scene_config/delete:
+  /api/v1/admin/group_config/delete:
     delete:
-      operationId: delete_api_v1_admin_scene_config_delete
-      description: /api/v1/admin/scene_config/delete
+      operationId: delete_api_v1_admin_group_config_delete
+      description: /api/v1/admin/group_config/delete
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -928,15 +928,15 @@ paths:
             schema:
               type: object
               properties:
-                scene_id: *id004
+                group_id: *id004
                 config_key: *id005
               required:
-              - scene_id
+              - group_id
               - config_key
-  /api/v1/admin/scene_config/list:
+  /api/v1/admin/group_config/list:
     get:
-      operationId: get_api_v1_admin_scene_config_list
-      description: /api/v1/admin/scene_config/list
+      operationId: get_api_v1_admin_group_config_list
+      description: /api/v1/admin/group_config/list
       responses:
         '200':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
@@ -968,7 +968,7 @@ paths:
           content: *id001
       parameters:
       - in: query
-        name: scene_id
+        name: group_id
         required: true
         schema:
           type: integer
@@ -977,7 +977,7 @@ paths:
   /{code}:
     get:
       operationId: resolve
-      description: Host must match current deployed scene domain. Ignores Tenant/Scene
+      description: Host must match current deployed group domain. Ignores Tenant/Group
         status. Cache hit skips DB; invalidation is bounded across instances.
       parameters:
       - in: path

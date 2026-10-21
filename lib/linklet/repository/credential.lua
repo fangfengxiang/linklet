@@ -19,8 +19,8 @@ local function bxor(a,b)
 end
 local function bor(a,b) return (a + b + bxor(a,b)) / 2 end
 
-local BaseModel = require("linklet.repository.base")
-local _M = setmetatable({}, {__index = BaseModel})
+local Base = require("linklet.repository.base")
+local _M = setmetatable({}, {__index = Base})
 _M.__index = _M
 
 local Crypto = require("linklet.crypto")
@@ -29,7 +29,7 @@ function _M.set_encryption_key(key)
 end
 
 function _M.new(db)
-    local self = BaseModel.new(db, "sl_tenant_credential")
+    local self = Base.new(db, "sl_tenant_credential")
     return setmetatable(self, _M)
 end
 

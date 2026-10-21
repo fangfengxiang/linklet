@@ -22,7 +22,10 @@ local ValidateMiddleware = require("linklet.http.validate")
 local AuthMiddleware = require("linklet.admin.auth")
 
 local LinkModel = require("linklet.repository.short_link")
-local SceneModel = require("linklet.repository.scene")
+local GroupModel = require("linklet.repository.group")
+local GroupConfig = require("linklet.repository.group_config")
+local GroupCore = require("linklet.core.group")
+local ResourceHandler = require("linklet.admin.handlers.resources")
 local DomainEntryModel = require("linklet.repository.domain_entry")
 local TenantModel = require("linklet.repository.tenant")
 local TenantCredential = require("linklet.repository.credential")
@@ -69,7 +72,7 @@ function _M.init(config)
 
     -- 模型 / Models
     local link_model = LinkModel.new(db)
-    local scene_model = SceneModel.new(db)
+    local group_model = GroupModel.new(db)
     local domain_entry_model = DomainEntryModel.new(db)
     local tenant_model = TenantModel.new(db)
     local credential_model = TenantCredential.new(db)
@@ -78,7 +81,7 @@ function _M.init(config)
     local json_mw = JsonMiddleware.new()
     local validate_mw = ValidateMiddleware.new_with_rules({
         target_url = {required = true, type = "string", max_len = 2048},
-        scene_id = {required = true, type = "number"},
+        group_id = {required = true, type = "number"},
         code = {required = false, type = "string", max_len = 20},
     })
     local disable_validate = ValidateMiddleware.new_with_rules({
@@ -91,7 +94,7 @@ function _M.init(config)
         id_generator = id_generator,
         obfuscator = Obfuscator,
         link_model = link_model,
-        scene_model = scene_model,
+        group_model = group_model,
         tenant_model = tenant_model,
         cache = cache,
     })
@@ -118,7 +121,7 @@ function _M.init(config)
         cache_sync = sync,
         id_generator = id_generator,
         link_model = link_model,
-        scene_model = scene_model,
+        group_model = group_model,
         domain_entry_model = domain_entry_model,
         tenant_model = tenant_model,
         credential_model = credential_model,
@@ -135,8 +138,15 @@ function _M.init(config)
         credential_handler = credential_handler,
     }
 
-    deps.scene_config_model = require("linklet.repository.scene_config").new(db)
-    deps.resources_handler = require("linklet.admin.handlers.resources").new(deps)
+    deps.group_config_model = GroupConfig.new(db)
+    deps.group_core = GroupCore.new(group_model)
+    deps.resources_handler = ResourceHandler.new({
+        domain_entry_model = domain_entry_model,
+        group_model = group_model,
+        group_core = deps.group_core,
+        group_config_model = deps.group_config_model,
+        tenant_model = tenant_model,
+    })
     -- 创建路由器 / Create router with routes
     router = Routes.create(deps)
 
@@ -150,6 +160,7 @@ end
 function _M.health()
     local rows = deps.db:query([[SELECT 1 AS ready FROM pg_class c
         WHERE c.oid=to_regclass('sl_short_link') AND c.relkind='r'
+        AND to_regclass('sl_group') IS NOT NULL
         AND EXISTS(SELECT 1 FROM sl_id_sequence WHERE sequence_key=1)]])
     if not rows or not rows[1] then ngx.status = 503; ngx.say("unavailable"); return end
     ngx.say("ok")

@@ -8,25 +8,25 @@ local ShortenHandler = require("linklet.admin.handlers.short_link")
 local IdGenerator = require("linklet.id.generator")
 
 describe("ShortenHandler", function()
-    local handler, deps, mock_link_model, mock_scene_model, mock_cache, resp, id_gen
+    local handler, deps, mock_link_model, mock_group_model, mock_cache, resp, id_gen
 
     before_each(function()
         mock_cache = helper.mock_cache()
 
         -- Mock link model
         mock_link_model = {
-            create = function(self, data) return data end,
+            create = function(self, data) data.domain="s.example.com"; return data end,
             disable = function(self, code) return {code = code, status = 2} end,
             find_by_code = function(self, code) return nil end,
         }
 
-        -- Mock scene model
-        mock_scene_model = {
-            find_by_id_with_domain = function(self, scene_id)
+        -- Mock group model
+        mock_group_model = {
+            find_by_id_with_domain = function(self, group_id)
                 return {
-                    scene_id = scene_id,
+                    group_id = group_id,
                     status = 1,
-                    name = "test_scene",
+                    name = "test_group",
                     domain_entry_id = 1,
                     domain = "s.example.com",
                     domain_status = 2,
@@ -47,7 +47,7 @@ describe("ShortenHandler", function()
             id_generator = id_gen,
             obfuscator = Obfuscator,
             link_model = mock_link_model,
-            scene_model = mock_scene_model,
+            group_model = mock_group_model,
             tenant_model = {authorized=function(_,id) return id==1 end},
             cache = mock_cache,
         }
@@ -59,7 +59,7 @@ describe("ShortenHandler", function()
     describe("create", function()
         it("creates a short link with valid params", function()
             local ctx = {
-                params = {target_url = "https://example.com/page", scene_id = 1},
+                params = {target_url = "https://example.com/page", group_id = 1},
                 tenant_id = 1,
                 response = resp,
             }
@@ -74,7 +74,7 @@ describe("ShortenHandler", function()
 
         it("returns 400 when target_url is missing", function()
             local ctx = {
-                params = {scene_id = 1},
+                params = {group_id = 1},
                 tenant_id = 1,
                 response = resp,
             }
@@ -86,7 +86,7 @@ describe("ShortenHandler", function()
             assert.truthy(resp._body.message:find("target_url"))
         end)
 
-        it("returns 400 when scene_id is missing", function()
+        it("returns 400 when group_id is missing", function()
             local ctx = {
                 params = {target_url = "https://example.com"},
                 tenant_id = 1,
@@ -99,11 +99,11 @@ describe("ShortenHandler", function()
             assert.equals(4002, resp._body.code)
         end)
 
-        it("returns 404 when scene not found", function()
-            mock_scene_model.find_by_id_with_domain = function() return nil end
+        it("returns 404 when group not found", function()
+            mock_group_model.find_by_id_with_domain = function() return nil end
 
             local ctx = {
-                params = {target_url = "https://example.com", scene_id = 999},
+                params = {target_url = "https://example.com", group_id = 999},
                 tenant_id = 1,
                 response = resp,
             }
@@ -113,9 +113,9 @@ describe("ShortenHandler", function()
             assert.equals(404, resp._status)
         end)
 
-        it("returns 403 when tenant has no scene grant", function()
+        it("returns 403 when tenant has no group grant", function()
             local ctx = {
-                params = {target_url = "https://example.com", scene_id = 1},
+                params = {target_url = "https://example.com", group_id = 1},
                 tenant_id = 999,  -- different tenant
                 response = resp,
             }
@@ -130,7 +130,7 @@ describe("ShortenHandler", function()
     describe("gen", function()
         it("creates short link and returns full URL", function()
             local ctx = {
-                params = {target_url = "https://example.com/page", scene_id = 1},
+                params = {target_url = "https://example.com/page", group_id = 1},
                 tenant_id = 1,
                 response = resp,
             }
@@ -144,12 +144,12 @@ describe("ShortenHandler", function()
         end)
 
         it("returns 400 when domain not configured", function()
-            mock_scene_model.find_by_id_with_domain = function()
-                return {scene_id = 1, status = 1, domain = nil}
+            mock_group_model.find_by_id_with_domain = function()
+                return {group_id = 1, status = 1, domain = nil}
             end
 
             local ctx = {
-                params = {target_url = "https://example.com", scene_id = 1},
+                params = {target_url = "https://example.com", group_id = 1},
                 tenant_id = 1,
                 response = resp,
             }

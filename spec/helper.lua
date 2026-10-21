@@ -21,7 +21,7 @@ local function mock_db(query_result)
         elseif type(query_result) == "table" then
             return query_result
         end
-        return {{id = 1, code = "testcod", target_url = "https://example.com", scene_id = 1, status = 1}}
+        return {{id = 1, code = "testcod", target_url = "https://example.com", group_id = 1, status = 1}}
     end
     result.exec = result.query
     result.disconnect = function() end

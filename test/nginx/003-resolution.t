@@ -115,3 +115,32 @@ GET /t
 accepted
 --- no_error_log
 [error]
+
+=== TEST 6: failed synchronization bypasses stale redirects and database failure returns 500
+--- test_code
+local code=a.create()
+local cache=a.deps.cache
+local key="link:s.example.com:"..code
+local sync=require("linklet.cache.sync").new(a.deps.db,cache,0.02)
+assert(sync:tick())
+assert(a.request("GET","/"..code)==302)
+assert(a.deps.link_model:disable(code,1)) -- durable revision changes without local invalidation
+sync.db={query=function() return nil,"sync unavailable" end}
+assert(not sync:tick())
+ngx.sleep(0.05)
+assert(not cache:get(key))
+assert(a.request("GET","/"..code)==410)
+local original=a.deps.link_model.find_by_code
+a.deps.link_model.find_by_code=function() return nil,"db unavailable" end
+assert(a.request("GET","/"..code)==500)
+a.deps.link_model.find_by_code=original
+sync.db=a.deps.db
+assert(sync:tick())
+assert(not cache:get(key))
+assert(a.request("GET","/"..code)==410)
+--- request
+GET /t
+--- response_body
+accepted
+--- no_error_log
+[error]

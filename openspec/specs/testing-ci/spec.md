@@ -120,6 +120,6 @@ Acceptance SHALL run Test::Nginx::Socket::Lua against real OpenResty and a dispo
 - **WHEN** 运行项目现有 lint/test/acceptance 命令
 - **THEN** SHALL 无新增失败，迁移前后数据核对通过
 #### Scenario: Unsafe migration
-- **GIVEN** 迁移核对发现 scene_id、code 或 current_max 不一致
+- **GIVEN** 迁移核对发现 group_id、code 或 current_max 不一致
 - **WHEN** 进入切流阶段
 - **THEN** 发布 SHALL 被阻止

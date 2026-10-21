@@ -21,19 +21,19 @@ CONF
 });
 run_tests();
 __DATA__
-=== TEST 1: shared scene grants apply to create/query/disable and revocation blocks management
+=== TEST 1: shared group grants apply to create/query/disable and revocation blocks management
 --- test_code
 local json=require("cjson")
-assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":2,"scene_ids":[1,1,2]}')==200)
+assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":2,"group_ids":[1,1,2]}')==200)
 local code=a.create(nil,{ak="other-ak"})
 assert(a.request("GET","/api/v1/shorten/get?code="..code)==200)
 assert(a.request("PUT","/api/v1/shorten/disable",json.encode({code=code}))==200)
 code=a.create()
-assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":2,"scene_ids":[2]}')==200)
+assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":2,"group_ids":[2]}')==200)
 assert(a.request("GET","/api/v1/shorten/get?code="..code,nil,{ak="other-ak"})==404)
 assert(a.request("PUT","/api/v1/shorten/disable",json.encode({code=code}),{ak="other-ak"})==404)
-assert(a.request("POST","/api/v1/shorten/create",'{"scene_id":1,"target_url":"https://example.com"}',{ak="other-ak"})==403)
-assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":2,"scene_ids":[999]}')==409)
+assert(a.request("POST","/api/v1/shorten/create",'{"group_id":1,"target_url":"https://example.com"}',{ak="other-ak"})==403)
+assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":2,"group_ids":[999]}')==409)
 --- request
 GET /t
 --- response_body
@@ -41,16 +41,16 @@ accepted
 --- no_error_log
 [error]
 
-=== TEST 2: Host+Code cache isolation; disabled tenant and scene do not invalidate a permanent link
+=== TEST 2: Host+Code cache isolation; disabled tenant and group do not invalidate a permanent link
 --- test_code
-local code=a.create({scene_id=1,target_url="https://example.com/permanent",expires_at=ngx.null})
+local code=a.create({group_id=1,target_url="https://example.com/permanent",expires_at=ngx.null})
 assert(a.request("GET","/"..code)==302)
 assert(a.request("GET","/"..code,nil,{request_host="other.example.com"})==404)
 assert(a.request("PUT","/api/v1/admin/tenant/status",'{"id":1,"status":2}')==200)
-assert(a.request("PUT","/api/v1/admin/scene/configure",'{"scene_id":1,"status":2}')==200)
+assert(a.request("PUT","/api/v1/admin/group/configure",'{"group_id":1,"status":2}')==200)
 assert(a.deps.cache:invalidate(code))
 assert(a.request("GET","/"..code)==302)
-assert(a.request("POST","/api/v1/shorten/create",'{"scene_id":1,"target_url":"https://example.com"}')==401)
+assert(a.request("POST","/api/v1/shorten/create",'{"group_id":1,"target_url":"https://example.com"}')==401)
 --- request
 GET /t
 --- response_body
@@ -58,20 +58,23 @@ accepted
 --- no_error_log
 [error]
 
-=== TEST 3: rebind invalidates independent worker caches and old Host stops resolving
+=== TEST 3: issued links freeze binding, including disabled and expired links
 --- test_code
 local code=a.create()
 assert(a.request("GET","/"..code)==302)
-local other=require("linklet.cache.local").new("other_cache")
-local sync=require("linklet.cache.sync").new(a.deps.db,other,0.05)
-assert(sync:tick());assert(other:set("link:s.example.com:"..code,"https://example.com/page",300))
-assert(a.request("PUT","/api/v1/admin/scene/configure",'{"scene_id":1,"domain_entry_id":2}')==200)
-assert(sync:tick());assert(not other:get("link:s.example.com:"..code))
-assert(a.deps.cache_sync:tick())
-assert(a.request("GET","/"..code)==404)
-assert(a.request("GET","/"..code,nil,{request_host="other.example.com"})==302)
-assert(a.request("PUT","/api/v1/admin/domain/disable",'{"id":1}')==200)
-assert(a.request("PUT","/api/v1/admin/domain/disable",'{"id":2}')==409)
+assert(a.request("PUT","/api/v1/admin/group/configure",'{"group_id":1,"domain_entry_id":2}')==409)
+assert(a.request("PUT","/api/v1/admin/group/configure",'{"group_id":1,"domain_entry_id":1,"status":2}')==200)
+assert(a.request("GET","/"..code)==302)
+assert(a.request("GET","/"..code,nil,{request_host="other.example.com"})==404)
+assert(a.deps.link_model:disable(code,1))
+assert(a.deps.db:query("UPDATE sl_short_link SET expires_at=NOW()-INTERVAL '1 day' WHERE code=$1",code))
+assert(not a.deps.db:query("UPDATE sl_group SET domain_entry_id=2 WHERE group_id=1"))
+assert(not a.deps.db:query("UPDATE sl_group SET deleted_at=NOW() WHERE group_id=1"))
+assert(a.request("PUT","/api/v1/admin/domain/disable",'{"id":1}')==409)
+assert(not a.deps.db:query("UPDATE sl_domain_entry SET deleted_at=NOW() WHERE id=1"))
+-- An empty group may rebind; its released domain may then go offline.
+assert(a.request("PUT","/api/v1/admin/group/configure",'{"group_id":2,"domain_entry_id":1}')==200)
+assert(a.request("PUT","/api/v1/admin/domain/disable",'{"id":2}')==200)
 --- request
 GET /t
 --- response_body
@@ -79,24 +82,24 @@ accepted
 --- no_error_log
 [error]
 
-=== TEST 4: operator APIs manage domain lifecycle, scenes and configuration without exposing credentials
+=== TEST 4: operator APIs manage domain lifecycle, groups and configuration without exposing credentials
 --- test_code
 local status,body=a.request("POST","/api/v1/admin/domain/create",'{"domain":"new.example.com","tag":"test"}')
 assert(status==200 and body.data.status==1)
 local id=body.data.id
 local json=require("cjson")
 assert(a.request("PUT","/api/v1/admin/domain/deploy",json.encode({id=id}))==200)
-assert(a.request("POST","/api/v1/admin/scene/create",json.encode({scene_id=100,name="shared",domain_entry_id=id}))==200)
-assert(a.request("PUT","/api/v1/admin/scene_config/set",'{"scene_id":100,"config_key":"future_policy","config_value":"off"}')==200)
-assert(a.request("GET","/api/v1/admin/scene_config/list?scene_id=100")==200)
-assert(a.request("DELETE","/api/v1/admin/scene_config/delete",'{"scene_id":100,"config_key":"future_policy"}')==200)
+assert(a.request("POST","/api/v1/admin/group/create",json.encode({group_id=100,name="shared",domain_entry_id=id}))==200)
+assert(a.request("PUT","/api/v1/admin/group_config/set",'{"group_id":100,"config_key":"future_policy","config_value":"off"}')==200)
+assert(a.request("GET","/api/v1/admin/group_config/list?group_id=100")==200)
+assert(a.request("DELETE","/api/v1/admin/group_config/delete",'{"group_id":100,"config_key":"future_policy"}')==200)
 assert(a.request("GET","/api/v1/admin/domain/list")==200)
-assert(a.request("GET","/api/v1/admin/scene/list?tenant_id=1")==200)
+assert(a.request("GET","/api/v1/admin/group/list?tenant_id=1")==200)
 assert(a.request("PUT","/api/v1/admin/domain/deploy",json.encode({id=id}))==409)
 assert(a.request("POST","/api/v1/admin/domain/create",'{"domain":"https://bad.example.com"}')==400)
-assert(a.request("PUT","/api/v1/admin/scene/configure",'{"scene_id":1,"domain_entry_id":false}')==400)
-assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":1,"scene_ids":[false]}')==400)
-assert(a.request("PUT","/api/v1/admin/scene_config/set",'{"scene_id":100,"config_key":"x","config_value":false}')==400)
+assert(a.request("PUT","/api/v1/admin/group/configure",'{"group_id":1,"domain_entry_id":false}')==400)
+assert(a.request("PUT","/api/v1/admin/tenant/grant",'{"id":1,"group_ids":[false]}')==400)
+assert(a.request("PUT","/api/v1/admin/group_config/set",'{"group_id":100,"config_key":"x","config_value":false}')==400)
 --- request
 GET /t
 --- response_body
@@ -104,7 +107,7 @@ accepted
 --- no_error_log
 [error]
 
-=== TEST 5: domain offline serializes with a concurrent scene binding
+=== TEST 5: domain offline serializes with a concurrent group binding
 --- test_code
 local domain=assert(a.deps.domain_entry_model:create("race.example.com"))
 assert(a.deps.domain_entry_model:deploy(domain.id))
@@ -117,11 +120,11 @@ local offline=ngx.thread.spawn(function()
     end)
 end)
 assert(locked:wait(5))
-local bound=ngx.thread.spawn(function() return a.deps.scene_model:configure(1,domain.id) end)
+local bound=ngx.thread.spawn(function() return a.deps.group_model:configure(1,domain.id) end)
 ngx.sleep(0.05);resume:post(1)
 local ok,result=ngx.thread.wait(offline);assert(ok and result)
 local ran,row,err=ngx.thread.wait(bound);assert(ran and not row and err)
-assert(a.deps.scene_model:find_by_id(1).domain_entry_id==1)
+assert(a.deps.group_model:find_by_id(1).domain_entry_id==1)
 --- request
 GET /t
 --- response_body
@@ -155,12 +158,63 @@ accepted
 --- test_code
 for _,action in ipairs({"create","gen"}) do
     for _,expiry in ipairs({"bad","2025-02-29T00:00:00Z","2001-01-01T00:00:00Z"}) do
-        assert(a.request("POST","/api/v1/shorten/"..action,require("cjson").encode({scene_id=1,target_url="https://example.com",expires_at=expiry}))==400)
+        assert(a.request("POST","/api/v1/shorten/"..action,require("cjson").encode({group_id=1,target_url="https://example.com",expires_at=expiry}))==400)
     end
 end
 assert(not a.deps.db:query("UPDATE sl_tenant_credential SET secret_key_enc='changed' WHERE access_key=$1",a.ak))
 assert(not a.deps.db:query("DELETE FROM sl_tenant_credential WHERE access_key=$1",a.ak))
 assert(a.request("GET","/api/v1/shorten/get")==400)
+--- request
+GET /t
+--- response_body
+accepted
+--- no_error_log
+[error]
+
+=== TEST 8: committed link creation blocks a concurrent rebind at the database boundary
+--- test_code
+local locked=require("ngx.semaphore").new()
+local resume=require("ngx.semaphore").new()
+local creator=ngx.thread.spawn(function()
+    return a.deps.db:transaction(function(conn)
+        assert(conn:query("INSERT INTO sl_short_link(code,target_url,group_id) VALUES('raceCode','https://example.com',1)"))
+        locked:post(1);assert(resume:wait(5));return true
+    end)
+end)
+assert(locked:wait(5))
+local binder=ngx.thread.spawn(function() return a.deps.group_model:configure(1,2) end)
+ngx.sleep(0.05);resume:post(1)
+local ok,committed=ngx.thread.wait(creator);assert(ok and committed)
+local ran,row,err=ngx.thread.wait(binder);assert(ran and not row and err=="group_domain_locked")
+assert(a.deps.group_model:find_by_id(1).domain_entry_id==1)
+assert(a.request("GET","/raceCode")==302)
+--- request
+GET /t
+--- response_body
+accepted
+--- no_error_log
+[error]
+
+=== TEST 9: a rebind racing gen returns the domain confirmed by the insert transaction
+--- test_code
+local locked=require("ngx.semaphore").new()
+local resume=require("ngx.semaphore").new()
+local binder=ngx.thread.spawn(function()
+    return a.deps.db:transaction(function(conn)
+        assert(conn:query("UPDATE sl_group SET domain_entry_id=2 WHERE group_id=1"))
+        locked:post(1);assert(resume:wait(5));return true
+    end)
+end)
+assert(locked:wait(5))
+local creator=ngx.thread.spawn(function()
+    return a.request("POST","/api/v1/shorten/gen",'{"group_id":1,"target_url":"https://example.com"}')
+end)
+ngx.sleep(0.05);resume:post(1)
+local ok,committed=ngx.thread.wait(binder);assert(ok and committed)
+local ran,status,body=ngx.thread.wait(creator)
+assert(ran and status==200 and body.data.short_url=="https://other.example.com/"..body.data.code)
+assert(a.request("GET","/"..body.data.code)==404)
+assert(a.request("GET","/"..body.data.code,nil,{request_host="other.example.com"})==302)
 --- request
 GET /t
 --- response_body

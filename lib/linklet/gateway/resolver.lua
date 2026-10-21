@@ -21,7 +21,7 @@ function _M:handle(ctx, next)
     end
     local host = require("linklet.gateway.host")
     if host.normalize(ctx.host)~=host.normalize(link.domain) or not host.normalize(ctx.host) then
-        ctx.response:not_found("host does not match scene domain")
+        ctx.response:not_found("host does not match group domain")
         return nil,"host mismatch"
     end
     if tonumber(link.status)~=1 or tonumber(link.domain_status)~=2 or

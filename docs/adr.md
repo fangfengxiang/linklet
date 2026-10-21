@@ -14,11 +14,11 @@
 | 编号 | 决策 | 模块 | 状态 |
 |------|------|------|------|
 | ADR-001 | 采用 OpenResty + Lua 原生架构，不引入 Web 框架 | 架构 | 已决 |
-| ADR-002 | 短链只记录 scene_id，不冗余 tenant_id/domain_id | 数据模型 | 已决 |
+| ADR-002 | 短链只记录 group_id，不冗余 tenant_id/domain_id | 数据模型 | 已决 |
 | ADR-003 | 短码全局唯一，数据库唯一索引保证 | 数据模型 | 已决 |
 | ADR-004 | 短码生成：黄金比例混淆 + Base62 编码 | 短码算法 | 已决 |
 | ADR-005 | 发号器采用号段批量分配模式 | 发号器 | 已决 |
-| ADR-006 | 短链/凭证停用终态；域名新增→投产→下线；Tenant/Scene 可启停 | 领域规则 | 已决 |
+| ADR-006 | 短链/凭证停用终态；域名新增→投产→下线；Tenant/Group 可启停 | 领域规则 | 已决 |
 | ADR-007 | 解析链路：CacheHandler → ResolveHandler → RedirectHandler | 架构 | 已决 |
 | ADR-008 | 缓存使用 ngx.shared.DICT | 基础设施 | 已决 |
 | ADR-009 | AK/SK + HMAC 签名认证 | 安全 | 已决 |
@@ -30,8 +30,8 @@ ADR-013：跨实例使用 PostgreSQL 修订号同步；默认 0.5 秒轮询，1 
 
 ADR-014：Test::Nginx + 真实 PostgreSQL 为运行时验收基准，mock 测试仅作为补充。
 
-ADR-015：Tenant.scene_ids 共享授权；ShortLink 仅属于 Scene。
+ADR-015：Tenant.group_ids 共享授权；ShortLink 仅属于 Group。
 
-ADR-016：Gateway Host 匹配 Scene 当前域名；历史域名兼容是上线门槛。
+ADR-016：Group 已有任何短链后禁止改绑域名；Gateway Host 匹配绑定域名；迁移保留旧 scene_id 数值为 group_id。
 
 ADR-017：在线 expand 与停机 switch 分离，旧列 contract 延后。

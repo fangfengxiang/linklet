@@ -18,7 +18,7 @@ function _M:deploy(id)
     return rows and rows[1],err
 end
 function _M:disable(id)
-    -- The database trigger shares a domain row lock with scene binding changes.
+    -- The database trigger shares a domain row lock with group binding changes.
     local rows,err=self.db:query([[UPDATE sl_domain_entry SET status=3,disabled_at=NOW(),updated_at=NOW()
         WHERE id=$1 AND status=2 AND deleted_at IS NULL RETURNING *]],id)
     return rows and rows[1],err
