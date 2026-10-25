@@ -27,3 +27,6 @@ Thumbs.db
 .test-deps/
 servroot/
 .test-nginx/
+
+# OpenSpec 工作区（本地草稿/提案，不入仓）
+openspec/
