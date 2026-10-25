@@ -37,7 +37,6 @@ COPY spec/ /app/spec/
 COPY test/ /app/test/
 COPY README.md /app/
 COPY docs/ /app/docs/
-COPY openspec/ /app/openspec/
 ENTRYPOINT []
 CMD ["bash", "scripts/test_nginx.sh"]
 
