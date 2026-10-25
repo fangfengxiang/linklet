@@ -61,7 +61,6 @@ services:
     # Test::Nginx binds its own servers inside the shared test network namespace.
     network_mode: service:postgres
     volumes:
-      - ../src:/app/src:ro
       - ../lib:/app/lib:ro
       - ../api:/app/api:ro
       - ../conf:/app/conf:ro

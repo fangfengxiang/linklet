@@ -52,7 +52,6 @@ make lint
 | 目录 | 内容 |
 |---|---|
 | lib/linklet/ | Core、Repository、Admin、Gateway 与基础设施 |
-| src/ | 旧 require 路径兼容转发 |
 | conf/ | Nginx 生产配置与共享 locations |
 | migrations/ | 初始、增量、测试数据和回滚 SQL |
 | spec/ | busted 单元测试 |

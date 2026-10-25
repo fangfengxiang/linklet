@@ -7,7 +7,6 @@ FROM openresty/openresty:alpine-fat AS runtime
 RUN apk add --no-cache curl
 COPY --from=dependencies /usr/local/openresty/luajit/share/lua/5.1/ /usr/local/openresty/luajit/share/lua/5.1/
 COPY --from=dependencies /usr/local/openresty/luajit/lib/lua/5.1/ /usr/local/openresty/luajit/lib/lua/5.1/
-COPY src/ /app/src/
 COPY lib/ /app/lib/
 COPY api/ /app/api/
 COPY conf/ /app/conf/

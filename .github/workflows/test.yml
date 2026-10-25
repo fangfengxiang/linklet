@@ -36,7 +36,7 @@ jobs:
       - name: Run luacheck
         run: |
           export PATH="$PATH:$HOME/.luarocks/bin"
-          luacheck lib/ src/ spec/ --codes
+          luacheck lib/ spec/ --codes
 
   test:
     name: Test (Lua ${{ matrix.lua }})

@@ -7,7 +7,7 @@ install:
 	$(LUAROCKS) make --local
 lint:
 	python3 scripts/check_boundaries.py
-	$(LUACHECK) lib/ src/ spec/ --codes
+	$(LUACHECK) lib/ spec/ --codes
 test:
 	$(BUSTED) spec/
 acceptance:
@@ -22,7 +22,7 @@ coverage:
 	$(LUACOV)
 	python3 scripts/check_coverage.py
 benchmark:
-	LUA_PATH='lib/?.lua;src/?.lua;;' lua test/benchmark/obfuscator_bench.lua
+	LUA_PATH='lib/?.lua;;' lua test/benchmark/obfuscator_bench.lua
 build:
 	docker build --target runtime -t linklet:latest .
 docs-check:

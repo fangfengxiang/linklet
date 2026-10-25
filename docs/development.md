@@ -33,7 +33,7 @@ make acceptance
 make coverage
 ```
 
-源码在 `lib/linklet/`（`src/` 为兼容加载转发），mock 单元测试在 `spec/`，真实运行时验收在 `test/nginx/`，基准在 `test/benchmark/`。
+源码在 `lib/linklet/`，mock 单元测试在 `spec/`，真实运行时验收在 `test/nginx/`，基准在 `test/benchmark/`。
 
 ## 变更流程
 

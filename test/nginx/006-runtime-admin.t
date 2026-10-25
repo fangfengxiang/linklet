@@ -60,7 +60,6 @@ accepted
 
 === TEST 3: package entry point loads; domain repository exposes explicit operations
 --- test_code
-assert(require("linklet") == require("linklet.app"))
 assert(a.deps.domain_entry_model.update == nil)
 assert(a.deps.domain_entry_model:find_by_id(1).domain == "s.example.com")
 local row = a.deps.group_model:find_by_id_with_domain(1)

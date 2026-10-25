@@ -2,9 +2,9 @@
 -- 测试辅助：设置 package.path，提供 mock 工具
 -- Test helper: set package.path, provide mock utilities
 
--- 添加 src/ 到 package.path / Add src/ to package.path
-local src_path = debug.getinfo(1, "S").source:match("@(.*/)") or "./"
-package.path = package.path .. ";" .. src_path .. "../src/?.lua;" .. src_path .. "../src/?/init.lua"
+-- 添加 lib/ 到 package.path / Add lib/ to package.path
+local base_path = debug.getinfo(1, "S").source:match("@(.*/)") or "./"
+package.path = package.path .. ";" .. base_path .. "../lib/?.lua"
 
 --- 创建 mock 数据库 / Create mock database
 -- @param query_result 查询返回值（表或函数）

@@ -20,12 +20,3 @@ files["spec/"] = {
         "231",
     },
 }
-files["src/"] = {
-    globals = {
-        "ngx",
-    },
-    ignore = {
-        "211",
-        "212",
-    },
-}
