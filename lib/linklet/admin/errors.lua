@@ -7,6 +7,10 @@ local mapping = {
     group_forbidden = {4004, 403},
     domain_unavailable = {4005, 400},
     invalid_expiry = {4007, 400},
+    link_missing = {4006, 404},
+    invalid_code = {4001, 400},
+    conflict = {409, 409},
+    not_found = {404, 404},
     unavailable = {500, 500},
 }
 

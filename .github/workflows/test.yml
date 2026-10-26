@@ -36,7 +36,7 @@ jobs:
       - name: Run luacheck
         run: |
           export PATH="$PATH:$HOME/.luarocks/bin"
-          luacheck lib/ spec/ --codes
+          make lint
 
   test:
     name: Test (Lua ${{ matrix.lua }})
@@ -71,6 +71,9 @@ jobs:
           luarocks install luacov --local
           luarocks install lua-cjson --local
           luarocks install pgmoon --local
+
+      - name: Install pinned SLDS
+        run: sh scripts/install_slds.sh "$HOME/.luarocks"
 
       - name: Run tests with coverage
         run: |

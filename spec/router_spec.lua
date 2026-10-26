@@ -165,3 +165,38 @@ describe("Router", function()
         end)
     end)
 end)
+
+describe("Router ordered mixed middleware", function()
+    it("preserves the registration order of functions and middleware objects", function()
+        local router, order = Router.new(), {}
+        router:use(function(_, next) order[#order + 1] = "global"; return next() end)
+        router:get("/ordered",
+            function(_, next)
+                order[#order + 1] = "first"
+                local value = next()
+                order[#order + 1] = "after"
+                return value
+            end,
+            {handle = function(_, _, next) order[#order + 1] = "second"; return next() end},
+            function() order[#order + 1] = "terminal"; return "done" end)
+        assert.equals("done", router:dispatch({method = "GET", uri = "/ordered"}))
+        assert.same({"global", "first", "second", "terminal", "after"}, order)
+    end)
+
+    it("supports an explicit terminal object and stops after a function rejection", function()
+        local router = Router.new()
+        router:get("/terminal", {handle = function() return "terminal" end})
+        assert.equals("terminal", router:dispatch({method = "GET", uri = "/terminal"}))
+        router:get("/denied", function() return nil, "denied" end, function() error("must not run") end)
+        local result, err = router:dispatch({method = "GET", uri = "/denied"})
+        assert.is_nil(result)
+        assert.equals("denied", err)
+    end)
+
+    it("rejects malformed routes at registration", function()
+        local router = Router.new()
+        assert.has_error(function() router:get("/missing") end)
+        assert.has_error(function() router:get("/invalid", 42) end)
+        assert.has_error(function() router:get("/invalid", false, function() end) end)
+    end)
+end)

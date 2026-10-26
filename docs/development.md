@@ -47,3 +47,7 @@ resty --shdict 'benchmark_cache 10m' -I lib test/benchmark/resolution_bench.lua
 ```
 
 这是算法和缓存 handler 微基准，不应当作线上 HTTP 吞吐或数据库性能结论。
+
+## SLDS 依赖
+
+首次本地运行先执行 `make deps`；Docker/CI 使用同一个固定源码修订。构造注入与策略测试见 [SLDS 集成契约](slds-integration.md)。

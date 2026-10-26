@@ -31,21 +31,17 @@ end
 -- @param handler 处理函数或中间件链
 function _M:route(method, pattern, ...)
     local args = {...}
+    assert(#args > 0, "route requires a terminal handler")
     local middleware_chain = {}
-    local handler = nil
-
-    for i = 1, #args do
-        local arg = args[i]
-        if type(arg) == "table" and arg.handle then
-            middleware_chain[#middleware_chain + 1] = arg
-        elseif type(arg) == "function" then
-            if handler then
-                middleware_chain[#middleware_chain + 1] = {handle = function(_, ctx, next) return arg(ctx, next) end}
-            else
-                handler = arg
-            end
-        end
+    for index = 1, #args - 1 do
+        local middleware = args[index]
+        assert(type(middleware) == "function" or
+            (type(middleware) == "table" and type(middleware.handle) == "function"), "invalid middleware")
+        middleware_chain[#middleware_chain + 1] = middleware
     end
+    local handler = args[#args]
+    assert(type(handler) == "function" or
+        (type(handler) == "table" and type(handler.handle) == "function"), "invalid terminal handler")
 
     self.routes[#self.routes + 1] = {
         method = method:upper(),
@@ -139,21 +135,16 @@ function _M:dispatch(ctx)
         chain[#chain + 1] = mw
     end
 
-    -- 执行链 / Execute chain
-    local function build_handler(idx)
-        if idx > #chain then
-            if route.handler then
-                return function() return route.handler(ctx) end
-            else
-                return function() return nil end
-            end
-        end
-        return function()
-            return chain[idx]:handle(ctx, build_handler(idx + 1))
-        end
+    -- Functions and objects retain registration order; the final item terminates.
+    local function invoke(value, next_handler)
+        if type(value) == "function" then return value(ctx, next_handler) end
+        return value:handle(ctx, next_handler)
     end
-
-    return build_handler(1)()
+    local function run(index)
+        if index > #chain then return invoke(route.handler) end
+        return invoke(chain[index], function() return run(index + 1) end)
+    end
+    return run(1)
 end
 
 return _M

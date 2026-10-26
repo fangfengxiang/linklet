@@ -1,5 +1,7 @@
 # Linklet v0.2 设计
 
+当前短链领域复用 lua-slds；调用、存储与部署边界见 [SLDS 集成契约](slds-integration.md)。
+
 设计依据为 [v0.2 SDD](../openspec/changes/refactor-backend-v02/design.md)，正式行为规范见 `openspec/specs/`。迁移与发布门槛见 [迁移手册](v02-migration.md)，文件映射和取舍见 [审计记录](v02-audit.md)。
 
 ```mermaid
@@ -16,7 +18,7 @@ flowchart LR
   ID --> PostgreSQL
 ```
 
-所有模块在 lib/linklet；Core 不依赖 ngx、HTTP 或 SQL。Admin HTTP 适配调用 Core 创建用例，简单资源操作直接调用 Repository。Gateway 缓存命中后统一进入 Redirect，不经过 Admin。构造参数注入依赖，不引入框架或 Service 层。
+所有模块在 lib/linklet；Core 不依赖 ngx、HTTP 或 SQL。Admin HTTP 适配调用 Core 创建用例，简单资源操作直接调用 Repository。Gateway 由 handler + resolver 组成，缓存命中不经过 Admin 路由或数据库。构造参数注入依赖，不引入框架或 Service 层。
 
 七张表为 DomainEntry、Group、GroupConfig、Tenant、TenantCredential、ShortLink、IDSequence。ShortLink 仅关联 group_id；Tenant.group_ids 为授权集合，多租户共同管理同 Group 的链接。保留旧字段供迁移过渡，它们不再表示业务归属。
 

@@ -2,7 +2,7 @@ rockspec_format = "3.0"
 package = "linklet"
 version = "scm-1"
 source = {
-    url = "git://github.com/frank/linklet.git",
+    url = "git+https://github.com/fangfengxiang/linklet.git",
     branch = "main",
 }
 description = {
@@ -15,13 +15,14 @@ Linklet is a self-hosted short link service that provides:
 - Management API with AK/SK HMAC authentication
 - Shared group authorization through tenant grants
     ]],
-    homepage = "https://github.com/frank/linklet",
+    homepage = "https://github.com/fangfengxiang/linklet",
     license = "MIT",
 }
 dependencies = {
     "lua >= 5.1",
     "pgmoon >= 1.18.0",
     "lua-cjson >= 2.1.0",
+    "lua-slds == scm-1",
 }
 build_dependencies = {
     "busted >= 2.0.0",
@@ -35,6 +36,10 @@ test_dependencies = {
 build = {
     type = "builtin",
     modules = {
+        ["linklet.repository.slds"] = "lib/linklet/repository/slds.lua",
+        ["linklet.repository.errors"] = "lib/linklet/repository/errors.lua",
+        ["linklet.repository.runtime"] = "lib/linklet/repository/runtime.lua",
+        ["linklet.core.short_link_policy"] = "lib/linklet/core/short_link_policy.lua",
         ["linklet.core.domain_entry"] = "lib/linklet/core/domain_entry.lua",
         ["linklet.admin.auth"] = "lib/linklet/admin/auth.lua",
         ["linklet.admin.handlers.credential"] = "lib/linklet/admin/handlers/credential.lua",
@@ -51,9 +56,8 @@ build = {
         ["linklet.core.time"] = "lib/linklet/core/time.lua",
         ["linklet.crypto"] = "lib/linklet/crypto.lua",
         ["linklet.db.postgres"] = "lib/linklet/db/postgres.lua",
-        ["linklet.gateway.cache"] = "lib/linklet/gateway/cache.lua",
+        ["linklet.gateway.handler"] = "lib/linklet/gateway/handler.lua",
         ["linklet.gateway.host"] = "lib/linklet/gateway/host.lua",
-        ["linklet.gateway.redirect"] = "lib/linklet/gateway/redirect.lua",
         ["linklet.gateway.resolver"] = "lib/linklet/gateway/resolver.lua",
         ["linklet.http.json"] = "lib/linklet/http/json.lua",
         ["linklet.http.request"] = "lib/linklet/http/request.lua",

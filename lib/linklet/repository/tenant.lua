@@ -1,3 +1,4 @@
+local Errors = require("linklet.repository.errors")
 -- lib/linklet/repository/tenant.lua
 -- 租户模型：sl_tenant 数据访问
 -- Tenant model: sl_tenant data access
@@ -20,7 +21,7 @@ function _M:create(name)
     local sql = "INSERT INTO sl_tenant (name, status) VALUES ($1, 1) RETURNING *"
     local res, err = self.db:query(sql, name)
     if not res then
-        return nil, err
+        return nil, Errors.normalize(err)
     end
     return res[1]
 end
@@ -30,7 +31,7 @@ function _M:find_by_id(id)
     local sql = "SELECT * FROM sl_tenant WHERE id = $1 LIMIT 1"
     local res, err = self.db:query(sql, id)
     if not res then
-        return nil, err
+        return nil, Errors.normalize(err)
     end
     return res[1]
 end
@@ -41,13 +42,14 @@ end
 function _M:find_all(limit)
     limit = limit or 100
     local sql = "SELECT * FROM sl_tenant ORDER BY created_at DESC LIMIT $1"
-    return self.db:query(sql, limit)
+    local rows, err = self.db:query(sql, limit)
+    return rows, Errors.normalize(err)
 end
 
 function _M:authorized(id,group_id)
     local rows,err=self.db:query([[SELECT 1 FROM sl_tenant WHERE id=$1 AND status=1
         AND deleted_at IS NULL AND $2::bigint=ANY(group_ids)]],id,group_id)
-    if not rows then return nil,err end
+    if not rows then return nil,Errors.normalize(err) end
     return rows[1]~=nil
 end
 function _M:grant(id, group_ids)
@@ -55,11 +57,11 @@ function _M:grant(id, group_ids)
     for i,v in ipairs(group_ids) do ids[i]=tostring(v) end
     local rows,err=self.db:query([[UPDATE sl_tenant SET group_ids=$2::bigint[],updated_at=NOW()
         WHERE id=$1 AND deleted_at IS NULL RETURNING *]],id,"{"..table.concat(ids,",").."}")
-    return rows and rows[1],err
+    return rows and rows[1],Errors.normalize(err)
 end
 function _M:set_status(id,status)
     local rows,err=self.db:query([[UPDATE sl_tenant SET status=$2,updated_at=NOW()
         WHERE id=$1 AND deleted_at IS NULL RETURNING *]],id,status)
-    return rows and rows[1],err
+    return rows and rows[1],Errors.normalize(err)
 end
 return _M

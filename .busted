@@ -3,7 +3,7 @@
 
 return {
     _all = {
-        lpath = "lib/?.lua;spec/?.lua;spec/?/init.lua",
+        lpath = "lib/?.lua;spec/?.lua;spec/?/init.lua;.test-deps/slds/share/lua/5.3/?.lua;.test-deps/slds/share/lua/5.3/?/init.lua;.test-deps/slds/share/lua/5.5/?.lua;.test-deps/slds/share/lua/5.5/?/init.lua;.test-deps/slds/share/lua/5.1/?.lua;.test-deps/slds/share/lua/5.1/?/init.lua",
     },
     default = {
         coverage = false,

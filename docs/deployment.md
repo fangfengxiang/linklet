@@ -53,3 +53,7 @@ kubectl apply -f deploy/k8s/deployment.yaml
 应用回滚可使用前一镜像和 `kubectl rollout undo`，但旧版本无法读取新 AES-GCM 凭证。必须同时规划凭证兼容性和数据库约束，不能只回滚镜像后假定业务恢复。
 
 005/006 后禁止直接回滚旧应用；共享授权与域名状态语义已改变，按迁移手册前向修复或受控恢复备份。
+
+## 分离入口
+
+`LINKLET_ROLE=combined` 为默认；`admin` 仅初始化管理 API，`gateway` 仅初始化解析入口且无需凭证加密密钥。域名、授权与缓存语义不变。角色、固定 SLDS 修订及发布前检查见 [集成契约](slds-integration.md)。本次不新增数据库迁移。

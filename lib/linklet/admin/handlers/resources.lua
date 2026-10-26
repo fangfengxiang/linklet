@@ -12,9 +12,9 @@ local function result(ctx,row,err)
         if err=="group_domain_locked" then
             return ctx.response:error_response(409,"group with links cannot change domain",409)
         end
-        if tostring(err):find("domain is still bound",1,true) or
-            tostring(err):find("domain must be deployed",1,true) or
-            tostring(err):find("grants must reference",1,true) then
+        if err=="domain_bound" or err=="domain_unavailable" or err=="invalid_grants" or
+            err=="conflict" or err=="invalid_transition" or err=="invalid_change" or
+            err=="invalid_reference" then
             return ctx.response:error_response(409,"resource constraint rejected the change",409)
         end
         return ctx.response:internal_error("database operation failed")

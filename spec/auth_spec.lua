@@ -7,31 +7,18 @@ local AuthMiddleware = require("linklet.admin.auth")
 describe("AuthMiddleware", function()
     local auth_mw, mock_credential_model, resp, req
 
-    local original_verify
     before_each(function()
-        original_verify = require("linklet.repository.credential").verify_signature
         mock_credential_model = {
             find_by_access_key = function(self, ak)
                 return {
-                    tenant_id = 1,
-                    access_key = ak,
-                    secret_key = "test-secret-key",
-                    status = 1,
+                    tenant_id = 1, access_key = ak, secret_key = "test-secret-key", status = 1,
                 }
             end,
         }
-        -- Monkey-patch the module-level verify_signature
-        local TenantCredential = require("linklet.repository.credential")
-        TenantCredential.verify_signature = function(sk, str, sig)
+        auth_mw = AuthMiddleware.new(mock_credential_model, function(sk, str, sig)
             return sk == "test-secret-key" and sig == "valid-signature"
-        end
-
-        auth_mw = AuthMiddleware.new(mock_credential_model)
+        end)
         resp = helper.mock_response()
-    end)
-
-    after_each(function()
-        require("linklet.repository.credential").verify_signature = original_verify
     end)
 
     describe("valid authentication", function()
@@ -120,6 +107,18 @@ describe("AuthMiddleware", function()
             assert.truthy(err)
             assert.matches("invalid access key", err)
         end)
+    end)
+
+    it("distinguishes credential storage outages from invalid identities", function()
+        mock_credential_model.find_by_access_key = function() return nil, "unavailable" end
+        local request = helper.mock_request("POST", "/api/v1/shorten/create", {}, {
+            ["X-Access-Key"]="test-ak", ["X-Signature"]="valid-signature",
+            ["X-Timestamp"]=tostring(os.time()),
+        })
+        local called = false
+        auth_mw:handle({request=request,response=resp}, function() called=true end)
+        assert.is_false(called)
+        assert.equals(500, resp._status)
     end)
 
     describe("disabled credential", function()

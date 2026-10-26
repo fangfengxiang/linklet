@@ -136,7 +136,7 @@ accepted
 --- test_code
 local generator=require("linklet.id.generator")
 assert(a.deps.db:query("UPDATE sl_id_sequence SET step=3 WHERE sequence_key=1"))
-local gen=generator.new({db=a.deps.db})
+local gen=generator.new({allocator=a.deps.runtime})
 assert(gen:next_id()==1)
 local t1=ngx.thread.spawn(function() return gen:next_ids(25) end)
 local t2=ngx.thread.spawn(function() return gen:allocate_segment(10) end)
@@ -217,6 +217,34 @@ assert(a.request("GET","/"..body.data.code)==404)
 assert(a.request("GET","/"..body.data.code,nil,{request_host="other.example.com"})==302)
 --- request
 GET /t
+--- response_body
+accepted
+--- no_error_log
+[error]
+
+=== TEST 10: concurrent SLDS creations keep each transaction domain view local to its call
+--- test_code
+local threads={}
+for index=1,8 do
+    local group_id=index%2+1
+    threads[index]=ngx.thread.spawn(function()
+        local status,body=a.request("POST","/api/v1/shorten/gen",require("cjson").encode({
+            group_id=group_id,target_url="https://example.com/concurrent-view"}),
+            {ak=group_id==1 and a.ak or "other-ak"})
+        assert(status==200)
+        local domain=group_id==1 and "s.example.com" or "other.example.com"
+        assert(body.data.short_url=="https://"..domain.."/"..body.data.code)
+        return body.data.code
+    end)
+end
+local seen={}
+for _,thread in ipairs(threads) do
+    local ok,code=ngx.thread.wait(thread)
+    assert(ok and not seen[code]);seen[code]=true
+end
+--- request
+GET /t
+--- timeout: 15
 --- response_body
 accepted
 --- no_error_log

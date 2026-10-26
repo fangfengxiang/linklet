@@ -1,10 +1,14 @@
-.PHONY: install lint test acceptance acceptance-docker e2e coverage benchmark build docs-check
+.PHONY: deps install lint test acceptance acceptance-docker e2e coverage benchmark build docs-check
 LUAROCKS ?= luarocks
 BUSTED ?= busted
 LUACOV ?= luacov
 LUACHECK ?= luacheck
+LUAROCKS_TREE ?= $(HOME)/.luarocks
+deps:
+	SLDS_LUAROCKS="$(LUAROCKS)" sh scripts/install_slds.sh "$(CURDIR)/.test-deps/slds"
 install:
-	$(LUAROCKS) make --local
+	SLDS_LUAROCKS="$(LUAROCKS)" sh scripts/install_slds.sh "$(LUAROCKS_TREE)"
+	$(LUAROCKS) make --tree="$(LUAROCKS_TREE)"
 lint:
 	python3 scripts/check_boundaries.py
 	$(LUACHECK) lib/ spec/ --codes

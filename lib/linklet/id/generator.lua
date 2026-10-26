@@ -1,9 +1,7 @@
 -- lib/linklet/id/generator.lua
--- 发号器：PostgreSQL 号段批量分配，Worker 本地消耗
--- ID generator: segment-based allocation from PostgreSQL
+-- ID generator: injected atomic segment allocation, Worker-local consumption.
 
 local setmetatable = setmetatable
-local tostring = tostring
 local error = error
 local type = type
 
@@ -11,48 +9,42 @@ local _M = {}
 _M.__index = _M
 
 --- 创建发号器实例 / Create ID generator instance
--- @param opts.db 数据库实例（required）
+-- @param opts.allocator durable reserve_segment(sequence_key,size) capability
 -- @param opts.segment_size 号段大小（default 1000）
--- @param opts.sequence_table 序列表名（default "sl_id_sequence"）
 -- @return id_generator 实例
 function _M.new(opts)
-    if not opts or not opts.db then
-        error("opts.db is required", 2)
+    if not opts or type(opts.allocator) ~= "table" or
+        type(opts.allocator.reserve_segment) ~= "function" then
+        error("opts.allocator.reserve_segment is required", 2)
     end
     local self = setmetatable({}, _M)
-    self.db = opts.db
+    self.allocator = opts.allocator
     self.segment_size = opts.segment_size
     self.sequence_key = opts.sequence_key or 1
     assert(type(self.sequence_key)=="number" and self.sequence_key>=1 and
         self.sequence_key<=2147483647 and self.sequence_key==math.floor(self.sequence_key), "invalid sequence key")
     assert(self.segment_size == nil or (type(self.segment_size) == "number" and self.segment_size >= 1 and
         self.segment_size <= 1000000 and self.segment_size == math.floor(self.segment_size)), "invalid segment size")
-    self.sequence_table = opts.sequence_table or "sl_id_sequence"
     self.segment_start = nil
     self.segment_end = nil
     self.cursor = nil
     return self
 end
 
---- 分配新号段 / Allocate a new segment from PostgreSQL
--- 使用原子 UPDATE ... RETURNING 保证多 Worker 安全
+--- Reserve a segment through the durable allocator. Explicit reservations
+-- stay outside the worker pool; the allocator owns cross-worker atomicity.
 -- @return true or nil, err
 local function valid_size(size)
     return type(size)=="number" and size>=1 and size<=1000000 and size==math.floor(size)
 end
 function _M:allocate_segment(size)
     if size~=nil and not valid_size(size) then return nil,"invalid segment size" end
-    local sql = "UPDATE " .. self.sequence_table .. [[ SET
-        current_max=current_max+COALESCE($2::integer,step),updated_at=NOW()
-        WHERE sequence_key=$1 AND current_max<=4294967295-COALESCE($2::integer,step)
-        RETURNING (current_max-COALESCE($2::integer,step)+1)::text AS segment_start,
-        current_max::text AS segment_end]]
-    local rows,err=self.db:query(sql,self.sequence_key,size)
-    if not rows then return nil,"failed to allocate segment: "..tostring(err) end
-    if not rows[1] then return nil,"sequence missing or short-code ID space exhausted" end
-    local first,last=tonumber(rows[1].segment_start),tonumber(rows[1].segment_end)
-    if not first or not last or first<1 or last<first or last>4294967295 then
-        return nil,"failed to parse segment bounds"
+    local segment, err = self.allocator:reserve_segment(self.sequence_key, size)
+    if not segment then return nil, err end
+    local first, last = tonumber(segment.start), tonumber(segment["end"])
+    if not first or not last or first<1 or last<first or last>4294967295 or
+        first~=math.floor(first) or last~=math.floor(last) then
+        return nil, "invalid segment bounds"
     end
     return {start=first,["end"]=last}
 end

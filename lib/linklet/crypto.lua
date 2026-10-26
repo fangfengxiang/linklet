@@ -47,4 +47,39 @@ function _M.random_key()
     return (bytes:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 
+-- Standalone tests use portable byte operations; production uses OpenSSL.
+local function bxor(a, b)
+    local result, bit = 0, 1
+    for _ = 1, 8 do
+        local left, right = a % 2, b % 2
+        result = result + (left + right - 2 * left * right) * bit
+        a, b, bit = math.floor(a / 2), math.floor(b / 2), bit * 2
+    end
+    return result
+end
+
+function _M.constant_time_compare(a, b)
+    if type(a) ~= "string" or type(b) ~= "string" or #a ~= #b then return false end
+    if ngx then
+        local ffi = require("ffi")
+        ffi.cdef("int CRYPTO_memcmp(const void *a, const void *b, size_t len);")
+        return ffi.C.CRYPTO_memcmp(a, b, #a) == 0
+    end
+    local result = 0
+    for i = 1, #a do
+        local different = bxor(a:byte(i), b:byte(i))
+        result = (result + different + bxor(result, different)) / 2
+    end
+    return result == 0
+end
+
+function _M.verify_signature(secret_key, string_to_sign, signature)
+    if type(secret_key) ~= "string" or secret_key == "" or
+        type(string_to_sign) ~= "string" or string_to_sign == "" or
+        type(signature) ~= "string" or signature == "" then return false end
+    if not ngx or not ngx.hmac_sha1 then return false end
+    local computed = ngx.encode_base64(ngx.hmac_sha1(secret_key, string_to_sign))
+    return _M.constant_time_compare(computed, signature)
+end
+
 return _M

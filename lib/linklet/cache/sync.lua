@@ -1,18 +1,19 @@
--- One timer per instance polls a durable PostgreSQL revision. Requests never
--- query PostgreSQL on a healthy cache hit. Stale synchronization bypasses cache.
+-- One timer per instance polls an injected durable revision capability.
+-- Healthy cache hits avoid storage I/O; stale synchronization bypasses cache.
 local _M = {}
 _M.__index = _M
-function _M.new(db, cache, interval)
+function _M.new(revisions, cache, interval)
     assert(type(interval)=="number" and interval>0 and interval<math.huge,"invalid cache sync interval")
+    assert(revisions and type(revisions.current_revision)=="function", "revision capability is required")
     cache.sync_window = interval * 2
-    return setmetatable({db=db,cache=cache,interval=interval},_M)
+    return setmetatable({revisions=revisions,cache=cache,interval=interval},_M)
 end
 function _M:tick()
     local checked_at = ngx.now()
-    local rows, err = self.db:query("SELECT cache_revision FROM sl_id_sequence WHERE sequence_key=1")
-    if not rows or not rows[1] then return nil, err or "cache revision missing" end
+    local value, err = self.revisions:current_revision()
+    if value == nil then return nil, err or "revision unavailable" end
     local dict = self.cache:_get_dict()
-    local revision = tostring(rows[1].cache_revision)
+    local revision = tostring(value)
     if dict:get("cache:revision") ~= revision then
         local generation = self.cache:generation() + 1
         dict:flush_all()

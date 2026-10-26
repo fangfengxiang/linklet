@@ -12,7 +12,7 @@ location /t {
         local db = require("linklet.db.postgres").new({host="127.0.0.1",port=tonumber(os.getenv("LINKLET_TEST_PGPORT")) or 15432,database="linklet_test",user="linklet",password="acceptance_only"})
         assert(db:query("TRUNCATE sl_id_sequence"))
         assert(db:query("INSERT INTO sl_id_sequence(sequence_key,current_max) VALUES(1,0)"))
-        local gen = require("linklet.id.generator").new({db=db,segment_size=2})
+        local gen = require("linklet.id.generator").new({allocator=require("linklet.repository.runtime").new(db),segment_size=2})
         local seen = {}
         for i=1,8 do
             local id = assert(gen:next_id())
@@ -36,7 +36,7 @@ location /t {
         local db = require("linklet.db.postgres").new({host="127.0.0.1",port=tonumber(os.getenv("LINKLET_TEST_PGPORT")) or 15432,database="linklet_test",user="linklet",password="acceptance_only"})
         assert(db:query("TRUNCATE sl_id_sequence"))
         assert(db:query("INSERT INTO sl_id_sequence(sequence_key,current_max) VALUES(1,0)"))
-        local gen = require("linklet.id.generator").new({db=db,segment_size=2})
+        local gen = require("linklet.id.generator").new({allocator=require("linklet.repository.runtime").new(db),segment_size=2})
         local threads, seen = {}, {}
         for i=1,20 do threads[i] = ngx.thread.spawn(function() return assert(gen:next_id()) end) end
         for i=1,20 do
@@ -82,7 +82,7 @@ location /t {
     content_by_lua_block {
         local db = require("linklet.db.postgres").new({host="127.0.0.1",port=tonumber(os.getenv("LINKLET_TEST_PGPORT")) or 15432,database="linklet_test",user="linklet",password="acceptance_only"})
         assert(db:query("UPDATE sl_id_sequence SET current_max = 4294967294 WHERE id=1"))
-        local last = require("linklet.id.generator").new({db=db,segment_size=1})
+        local last = require("linklet.id.generator").new({allocator=require("linklet.repository.runtime").new(db),segment_size=1})
         assert(last:next_id() == 4294967295)
         local id,err = last:next_id()
         assert(not id and err:find("exhausted"))

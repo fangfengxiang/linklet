@@ -35,3 +35,7 @@ ADR-015：Tenant.group_ids 共享授权；ShortLink 仅属于 Group。
 ADR-016：Group 已有任何短链后禁止改绑域名；Gateway Host 匹配绑定域名；迁移保留旧 scene_id 数值为 group_id。
 
 ADR-017：在线 expand 与停机 switch 分离，旧列 contract 延后。
+
+ADR-018：通用短链身份/生命周期/解析复用 lua-slds；ctx 传调用身份，metadata.group_id 映射原生列，不新增 payload。
+
+ADR-019：持久化能力包含原子写、号段、修订号与健康检查；SQL 限于 Repository/DB。Admin 与 Gateway 使用独立入口，Gateway 固定解析链。

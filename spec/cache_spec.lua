@@ -35,6 +35,16 @@ describe("Cache", function()
         end)
     end)
 
+    it("writes an in-flight result into its captured generation only", function()
+        cache._store["cache:generation"] = 7
+        assert(cache:set_for_generation("link:s.example.com:code", "old target", 20, 6))
+        assert.is_nil(cache:get("link:s.example.com:code"))
+        assert.equals("old target", cache._store["link:s.example.com:code:g6"])
+        assert(cache:set_for_generation("link:s.example.com:code", "new target", 20, 7))
+        assert.equals("new target", cache:get("link:s.example.com:code"))
+        assert.has_error(function() cache:set_for_generation("link:key", "target", 20, nil) end)
+    end)
+
     describe("delete", function()
         it("removes a value", function()
             cache:set("key1", "value1")

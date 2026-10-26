@@ -3,15 +3,17 @@
 -- AK/SK HMAC authentication middleware
 
 local setmetatable = setmetatable
-local tostring = tostring
 
-local TenantCredential = require("linklet.repository.credential")
+local Crypto = require("linklet.crypto")
 local _M = {}
 _M.__index = _M
 
-function _M.new(credential_model)
+function _M.new(credential_model, verify_signature)
+    assert(credential_model and type(credential_model.find_by_access_key)=="function",
+        "credential repository is required")
     local self = setmetatable({}, _M)
-    self.credential_model = credential_model or TenantCredential
+    self.credential_model = credential_model
+    self.verify_signature = verify_signature or Crypto.verify_signature
     return self
 end
 
@@ -61,7 +63,7 @@ function _M:handle(ctx, next)
         -- OpenResty 环境使用 ngx.time
         local now
         local ngx = ngx
-    local ok = ngx ~= nil
+        local ok = ngx ~= nil
         if ok and ngx.time then
             now = ngx.time()
         else
@@ -79,6 +81,10 @@ function _M:handle(ctx, next)
 
     -- 查找凭证 / Look up credential
     local cred, cerr = self.credential_model:find_by_access_key(access_key)
+    if cerr then
+        if ctx.response then ctx.response:internal_error("credential storage unavailable") end
+        return nil, "credential storage unavailable"
+    end
     if not cred then
         ctx.auth_error = "invalid access key"
         if ctx.response then
@@ -105,7 +111,7 @@ function _M:handle(ctx, next)
     local string_to_sign = method .. "\n" .. uri .. "\n" .. (timestamp or "") .. "\n" .. body
 
     -- 验证签名 / Verify signature
-    local valid = TenantCredential.verify_signature(cred.secret_key, string_to_sign, signature)
+    local valid = self.verify_signature(cred.secret_key, string_to_sign, signature)
     if not valid then
         ctx.auth_error = "invalid signature"
         if ctx.response then

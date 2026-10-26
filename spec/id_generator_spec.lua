@@ -4,6 +4,7 @@
 
 local IdGenerator = require("linklet.id.generator")
 local helper = require("helper")
+local Runtime = require("linklet.repository.runtime")
 
 describe("IdGenerator", function()
     describe("segment allocation", function()
@@ -11,7 +12,7 @@ describe("IdGenerator", function()
             local db = helper.mock_db(function(sql, ...)
                 return {{segment_start = "1000", segment_end = "1999"}}
             end)
-            local gen = IdGenerator.new({db = db, segment_size = 1000})
+            local gen = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
 
             local id = gen:next_id()
 
@@ -23,7 +24,7 @@ describe("IdGenerator", function()
             local db = helper.mock_db(function(sql, ...)
                 return {{segment_start = "1000", segment_end = "1999"}}
             end)
-            local gen = IdGenerator.new({db = db, segment_size = 1000})
+            local gen = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
 
             -- 第一次调用分配号段
             local id1 = gen:next_id()
@@ -47,7 +48,7 @@ describe("IdGenerator", function()
                     return {{segment_start = "2000", segment_end = "2999"}}
                 end
             end)
-            local gen = IdGenerator.new({db = db, segment_size = 2})
+            local gen = IdGenerator.new({allocator = Runtime.new(db), segment_size = 2})
 
             local id1 = gen:next_id()  -- 1000
             local id2 = gen:next_id()  -- 1001
@@ -68,8 +69,8 @@ describe("IdGenerator", function()
                 return {{segment_start = tostring(counter - 999), segment_end = tostring(counter)}}
             end)
 
-            local gen1 = IdGenerator.new({db = db, segment_size = 1000})
-            local gen2 = IdGenerator.new({db = db, segment_size = 1000})
+            local gen1 = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
+            local gen2 = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
 
             local id1 = gen1:next_id()
             local id2 = gen2:next_id()
@@ -94,7 +95,7 @@ describe("IdGenerator", function()
                     return {{segment_start = "10000", segment_end = "10999"}}
                 end
             end)
-            local gen = IdGenerator.new({db = db, segment_size = 1000})
+            local gen = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
 
             local id1 = gen:next_id()  -- 5000
             gen:reset()                -- simulate worker restart
@@ -112,7 +113,7 @@ describe("IdGenerator", function()
             local db = helper.mock_db(function()
                 return {{segment_start = "1000", segment_end = "1999"}}
             end)
-            local gen = IdGenerator.new({db = db, segment_size = 1000})
+            local gen = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
 
             gen:next_id()  -- allocate segment
 
@@ -128,14 +129,14 @@ describe("IdGenerator", function()
         it("returns error if DB query fails", function()
             local db = helper.mock_db(nil)
             db.query = function() return nil, "connection refused" end
-            local gen = IdGenerator.new({db = db, segment_size = 1000})
+            local gen = IdGenerator.new({allocator = Runtime.new(db), segment_size = 1000})
 
             local id, err = gen:next_id()
             assert.is_nil(id)
             assert.truthy(err)
         end)
 
-        it("errors if db is nil in constructor", function()
+        it("errors if allocator is missing in constructor", function()
             assert.has_error(function()
                 IdGenerator.new({})
             end)

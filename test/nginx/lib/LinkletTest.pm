@@ -20,7 +20,7 @@ sub import {
         }
         $coverage .= qq{init_worker_by_lua_block { $worker }};
         $block->set_value('http_config', qq{
-            lua_package_path "$root/lib/?.lua;$root/test/nginx/?.lua;$root/.test-deps/lua/?.lua;$root/.test-deps/lua/?/init.lua;$root/.test-deps/runtime/share/lua/5.1/?.lua;$root/.test-deps/runtime/share/lua/5.1/?/init.lua;;";
+            lua_package_path "$root/lib/?.lua;$root/.test-deps/slds/share/lua/5.5/?.lua;$root/.test-deps/slds/share/lua/5.5/?/init.lua;$root/.test-deps/slds/share/lua/5.3/?.lua;$root/.test-deps/slds/share/lua/5.3/?/init.lua;$root/.test-deps/slds/share/lua/5.1/?.lua;$root/.test-deps/slds/share/lua/5.1/?/init.lua;$root/test/nginx/?.lua;$root/.test-deps/lua/?.lua;$root/.test-deps/lua/?/init.lua;$root/.test-deps/runtime/share/lua/5.1/?.lua;$root/.test-deps/runtime/share/lua/5.1/?/init.lua;;";
             lua_package_cpath "$root/.test-deps/runtime/lib/lua/5.1/?.so;;";
             lua_shared_dict linklet_cache 10m;
             lua_shared_dict linklet_locks 1m;

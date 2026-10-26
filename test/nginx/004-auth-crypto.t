@@ -53,6 +53,11 @@ accepted
 === TEST 3: AES-GCM uses random nonce, detects tampering, refuses legacy XOR and missing key
 --- test_code
 local c = require("linklet.crypto")
+local signature=ngx.encode_base64(ngx.hmac_sha1(a.sk,"signed value"))
+assert(c.verify_signature(a.sk,"signed value",signature))
+assert(not c.verify_signature(a.sk,"changed value",signature))
+assert(c.constant_time_compare("same", "same"))
+assert(not c.constant_time_compare("same", "diff"))
 local one = assert(c.encrypt(a.sk))
 local two = assert(c.encrypt(a.sk))
 assert(one ~= two and one:sub(1,3) == "v1:" and c.decrypt(one) == a.sk)

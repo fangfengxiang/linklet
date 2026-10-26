@@ -2,6 +2,8 @@ local Time=require("linklet.core.time")
 local Core=require("linklet.core.short_link")
 local Generator=require("linklet.id.generator")
 local Host=require("linklet.gateway.host")
+local Adapter=require("linklet.repository.slds")
+local Storage=require("linklet.repository.short_link")
 describe("v0.2 domain contracts",function()
     it("parses RFC3339 independent of local timezone and rejects invalid dates",function()
         assert.equals(0,Time.parse("1970-01-01T00:00:00Z"))
@@ -26,12 +28,17 @@ describe("v0.2 domain contracts",function()
     local core, calls
     before_each(function()
         calls=0
-        core=Core.new({now=function() return 100 end,
+        local deps={now=function() return 100 end,
             group_model={find_by_id_with_domain=function()
-                return {status=1,domain_status=2,domain="s.example.com"} end},
+                local domain=calls>0 and "confirmed.example.com" or "s.example.com"
+                return {status=1,domain_status=2,domain=domain} end},
             tenant_model={authorized=function(_,id) return id==1 or id==2 end},
             id_generator={next_id=function() return 10 end},obfuscator={generate=function() return "code10" end},
-            link_model={create=function(_,data) calls=calls+1;data.domain="confirmed.example.com";return data end}})
+            link_model={create=function(_,data)
+                calls=calls+1;data.status=1;data.domain="confirmed.example.com";return data end,
+                to_entity=Storage.to_entity}}
+        deps.short_link_repository=Adapter.new(deps.link_model)
+        core=Core.new(deps)
     end)
     it("allows both granted tenants to create in a shared group",function()
         for _,id in ipairs({1,2}) do
@@ -58,16 +65,23 @@ describe("v0.2 domain contracts",function()
         assert.equals("unavailable",err.kind)
     end)
     it("returns the domain confirmed by creation, even if the initial read was stale",function()
+        local reads=0
+        core.group_model.find_by_id_with_domain=function()
+            reads=reads+1
+            if reads>1 then return nil,"database unavailable after commit" end
+            return {status=1,domain_status=2,domain="old.example.com"}
+        end
         local row=assert(core:create(1,{group_id=7,target_url="https://example.com"}))
         assert.equals("confirmed.example.com",row.domain)
+        assert.equals(1,reads)
     end)
     it("keeps explicit segments out of the worker pool and uses database step by default",function()
         local cursor=0
-        local gen=Generator.new({db={query=function(_,sql,key,size)
-            assert.equals(1,key);assert.matches("sequence_key",sql)
+        local gen=Generator.new({allocator={reserve_segment=function(_,key,size)
+            assert.equals(1,key)
             size=size or 3
             cursor=cursor+size
-            return {{segment_start=cursor-size+1,segment_end=cursor}}
+            return {start=cursor-size+1,["end"]=cursor}
         end}})
         assert.equals(1,gen:next_id())
         assert.same({start=4,["end"]=5},gen:allocate_segment(2))

@@ -5,7 +5,8 @@
 local helper = require("helper")
 local Obfuscator = require("linklet.id.obfuscator")
 local ShortenHandler = require("linklet.admin.handlers.short_link")
-local IdGenerator = require("linklet.id.generator")
+local Adapter = require("linklet.repository.slds")
+local Storage = require("linklet.repository.short_link")
 
 describe("ShortenHandler", function()
     local handler, deps, mock_link_model, mock_group_model, mock_cache, resp, id_gen
@@ -15,8 +16,9 @@ describe("ShortenHandler", function()
 
         -- Mock link model
         mock_link_model = {
-            create = function(self, data) data.domain="s.example.com"; return data end,
-            disable = function(self, code) return {code = code, status = 2} end,
+            create = function(self, data) data.status=1; data.domain="s.example.com"; return data end,
+            to_entity = Storage.to_entity,
+            disable = function(self, code) return {code=code,status=2,target_url="https://example.com",group_id=1} end,
             find_by_code = function(self, code) return nil end,
         }
 
@@ -47,6 +49,7 @@ describe("ShortenHandler", function()
             id_generator = id_gen,
             obfuscator = Obfuscator,
             link_model = mock_link_model,
+            short_link_repository = Adapter.new(mock_link_model),
             group_model = mock_group_model,
             tenant_model = {authorized=function(_,id) return id==1 end},
             cache = mock_cache,

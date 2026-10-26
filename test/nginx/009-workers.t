@@ -1,3 +1,4 @@
+BEGIN { $ENV{TEST_NGINX_REUSE_PORT} = 1; }
 use Test::Nginx::Socket::Lua 'no_plan';
 use lib 'test/nginx/lib';
 use LinkletTest;

@@ -91,3 +91,29 @@ GET /t
 accepted
 --- no_error_log
 [error]
+
+=== TEST 4: runtime capabilities and repository errors hide PostgreSQL representation
+--- test_code
+local runtime=a.deps.runtime
+assert(runtime:health())
+local before=tonumber(assert(runtime:current_revision()))
+local segment=assert(runtime:reserve_segment(1,3))
+assert(segment.start==1 and segment["end"]==3)
+assert(a.deps.db:query("UPDATE sl_tenant SET name='changed tenant' WHERE id=1"))
+assert(tonumber(assert(runtime:current_revision()))>before)
+local row,err=a.deps.domain_entry_model:create("s.example.com")
+assert(not row and err=="conflict")
+row,err=a.deps.domain_entry_model:disable(1)
+assert(not row and err=="domain_bound")
+row,err=a.deps.tenant_model:grant(1,{999999})
+assert(not row and err=="invalid_grants")
+local code=a.create()
+row,err=a.deps.group_model:configure(1,2)
+assert(not row and err=="group_domain_locked")
+assert(a.deps.link_model:find_by_code(code))
+--- request
+GET /t
+--- response_body
+accepted
+--- no_error_log
+[error]

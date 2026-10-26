@@ -62,12 +62,15 @@ end
 -- @param value 缓存值（字符串）
 -- @param ttl 过期时间（秒，可选）
 -- @return true or nil, err
-function _M:set(key, value, ttl)
+local function write(self, key, value, ttl, generation)
     local dict = self:_get_dict()
     if not dict then
         return nil, "cache not available"
     end
-    if key:sub(1,5)=="link:" then key=key .. ":g" .. self:generation() end
+    if key:sub(1,5)=="link:" then
+        if generation == nil then generation = self:generation() end
+        key = key .. ":g" .. generation
+    end
     if type(value) ~= "string" then
         value = tostring(value)
     end
@@ -76,6 +79,18 @@ function _M:set(key, value, ttl)
     else
         return dict:set(key, value)
     end
+end
+
+function _M:set(key, value, ttl)
+    return write(self, key, value, ttl)
+end
+
+-- A lookup writes only into the generation it originally observed. A concurrent
+-- invalidation makes this entry unreachable even if it happens during the write.
+function _M:set_for_generation(key, value, ttl, generation)
+    assert(type(generation) == "number" and generation >= 0 and
+        generation < math.huge and generation == math.floor(generation), "invalid cache generation")
+    return write(self, key, value, ttl, generation)
 end
 
 --- 删除缓存值 / Delete cached value

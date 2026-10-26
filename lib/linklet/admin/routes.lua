@@ -2,7 +2,6 @@
 -- 路由定义 / Route definitions
 -- 短链业务 API: /api/v1/shorten/*
 -- 后台管理 API: /api/v1/admin/*  (nginx 层 IP 白名单限制)
--- 短码解析网关: /:code
 
 local Router = require("linklet.http.router")
 local _M = {}
@@ -13,15 +12,8 @@ local _M = {}
 --   - validate: 校验中间件
 --   - json: JSON 中间件
 --   - shorten_handler: 短链管理处理器
---   - cache_handler: 缓存处理器
---   - resolve_handler: 解析处理器
---   - redirect_handler: 重定向处理器
 function _M.create(deps)
     local router = Router.new()
-
-    -- 解析网关路由 / Resolution gateway routes
-    -- GET /:code → cache → resolve → redirect
-    router:get("/:code", deps.cache_handler, deps.resolve_handler, deps.redirect_handler)
 
     -- 短链业务 API / Short link business API
     -- 创建短链 / Create short link

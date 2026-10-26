@@ -37,10 +37,13 @@ curl -f http://127.0.0.1:8080/health
 
 Group 有任何短链后冻结域名绑定；短码全局唯一，code、target_url、group_id 不可修改。Admin 与租户 API 的边界及 React 接入方案见 [认证设计](docs/admin-auth.md)。
 
+短链领域语义复用 lua-slds，集成边界和固定依赖构建见 [SLDS 集成契约](docs/slds-integration.md)。支持 `LINKLET_ROLE=combined|admin|gateway`。
+
 ## 验收
 
 ```sh
 make acceptance-docker  # 独立 OpenResty + PostgreSQL + Test::Nginx
+make deps               # 安装固定修订的 lua-slds
 make test               # 补充单元测试
 make lint
 ```

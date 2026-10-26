@@ -38,3 +38,55 @@ GET /t
 initialized
 --- no_error_log
 [error]
+
+=== TEST 2: Gateway role starts without credential configuration and does not expose Admin
+--- config
+location /t {
+    content_by_lua_block {
+        local a=require("acceptance")
+        a.setup()
+        local code=a.create()
+        local app=require("linklet.app")
+        local gateway=app.init({role="gateway",database=a.deps.db.config,encryption_key="unused-invalid-key"})
+        gateway.cache.sync_window=nil
+        assert(gateway.role=="gateway" and gateway.auth==nil and gateway.credential_model==nil)
+        assert(gateway.id_generator==nil and app.get_router()==nil)
+        assert(a.request("GET","/"..code)==302)
+        assert(a.request("POST","/api/v1/shorten/create",'{"group_id":1,"target_url":"https://example.com"}')==404)
+        assert(a.request("GET","/health")==200)
+        ngx.say("gateway role accepted")
+    }
+}
+--- request
+GET /t
+--- response_body
+gateway role accepted
+--- no_error_log
+[error]
+
+=== TEST 3: Admin role builds only its entry and the Gateway bypasses the Admin router
+--- config
+location /t {
+    content_by_lua_block {
+        local a=require("acceptance")
+        a.setup()
+        local code=a.create()
+        local app=require("linklet.app")
+        assert(not app.get_router():match("GET","/"..code))
+        local original=app.get_router().dispatch
+        app.get_router().dispatch=function() error("Gateway must not enter Admin router") end
+        assert(a.request("GET","/"..code)==302)
+        app.get_router().dispatch=original
+        local admin=app.init({role="admin",database=a.deps.db.config,encryption_key=string.rep("ab",32)})
+        assert(admin.role=="admin" and admin.resolver==nil and app.get_router())
+        assert(a.request("GET","/"..code)==404)
+        assert(a.request("GET","/api/v1/admin/tenant/list")==200)
+        ngx.say("admin role accepted")
+    }
+}
+--- request
+GET /t
+--- response_body
+admin role accepted
+--- no_error_log
+[error]

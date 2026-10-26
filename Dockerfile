@@ -1,12 +1,16 @@
 FROM openresty/openresty:alpine-fat AS dependencies
-RUN apk add --no-cache build-base \
+RUN apk add --no-cache build-base git \
     && luarocks install pgmoon 1.18.0-1 \
     && luarocks install lua-cjson 2.1.0.10-1
+COPY dependencies/lua-slds.ref /app/dependencies/lua-slds.ref
+COPY scripts/install_slds.sh /app/scripts/install_slds.sh
+RUN sh /app/scripts/install_slds.sh
 
 FROM openresty/openresty:alpine-fat AS runtime
 RUN apk add --no-cache curl
 COPY --from=dependencies /usr/local/openresty/luajit/share/lua/5.1/ /usr/local/openresty/luajit/share/lua/5.1/
 COPY --from=dependencies /usr/local/openresty/luajit/lib/lua/5.1/ /usr/local/openresty/luajit/lib/lua/5.1/
+COPY dependencies/lua-slds.ref /app/dependencies/lua-slds.ref
 COPY lib/ /app/lib/
 COPY api/ /app/api/
 COPY conf/ /app/conf/

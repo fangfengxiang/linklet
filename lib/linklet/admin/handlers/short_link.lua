@@ -49,38 +49,17 @@ function _M:gen(ctx) return create(self,ctx,true) end
 -- @return true or nil, err
 function _M:disable(ctx)
     local params = ctx.params or ctx.request:all_params()
-    local code = params.code
-
-    if not code or code == "" then
-        return ctx.response:error_response(4001, "code is required", 400)
-    end
-
-    -- 停用短链 / Disable link
-    local link, err = self.link_model:disable(code, ctx.tenant_id)
-    if not link then
-        if err then return ctx.response:internal_error("database unavailable") end
-        return ctx.response:error_response(4006, "link not found or already disabled", 404)
-    end
-
-    -- 失效缓存 / Invalidate cache
-    if self.cache then
-        self.cache:invalidate(code)
-    end
-
-    return ctx.response:success({
-        code = code,
-        status = "disabled",
-    })
+    local data, err = self.use_case:disable(ctx.tenant_id, params.code)
+    if not data then return require("linklet.admin.errors").respond(ctx.response, err) end
+    if self.cache then self.cache:invalidate(data.code) end
+    return ctx.response:success(data)
 end
 
 function _M:get(ctx)
-    local p=ctx.request:all_params()
-    if type(p.code)~="string" or #p.code<1 or #p.code>20 then
-        return ctx.response:error_response(4001,"code is required",400)
-    end
-    local row,err=self.link_model:find_authorized(p.code,ctx.tenant_id)
-    if err then return ctx.response:internal_error("database unavailable") end
-    if not row then return ctx.response:not_found("link not found") end
+    local p = ctx.request:all_params()
+    local row, err = self.use_case:get(ctx.tenant_id, p.code)
+    if not row then return require("linklet.admin.errors").respond(ctx.response, err) end
     return ctx.response:success(row)
 end
+
 return _M

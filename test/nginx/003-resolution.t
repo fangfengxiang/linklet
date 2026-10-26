@@ -27,9 +27,9 @@ local code = a.create()
 local status, _, headers = a.request("GET","/" .. code)
 assert(status == 302 and headers:find("Location: https://example.com/page",1,true))
 assert(a.deps.cache:get("link:s.example.com:" .. code) == "https://example.com/page")
-local original = a.deps.link_model.find_by_code
+local original = a.deps.link_model.find_for_resolution
 local queries = 0
-a.deps.link_model.find_by_code = function(...) queries = queries+1; return original(...) end
+a.deps.link_model.find_for_resolution = function(...) queries = queries+1; return original(...) end
 assert(a.request("GET","/" .. code) == 302 and queries == 0)
 assert(a.request("PUT","/api/v1/shorten/disable",require("cjson").encode({code=code})) == 200)
 assert(a.request("GET","/" .. code) == 410 and queries == 1)
@@ -71,10 +71,10 @@ accepted
 === TEST 4: a lookup cannot refill cache after a concurrent disable
 --- test_code
 local code = a.create()
-local original = a.deps.link_model.find_by_code
+local original = a.deps.link_model.find_for_resolution
 local started = require("ngx.semaphore").new()
 local resume = require("ngx.semaphore").new()
-a.deps.link_model.find_by_code = function(...)
+a.deps.link_model.find_for_resolution = function(...)
     local row = original(...)
     started:post(1)
     assert(resume:wait(5))
@@ -85,7 +85,7 @@ assert(started:wait(5))
 assert(a.request("PUT","/api/v1/shorten/disable",require("cjson").encode({code=code})) == 200)
 resume:post(1)
 assert(ngx.thread.wait(lookup))
-a.deps.link_model.find_by_code = original
+a.deps.link_model.find_for_resolution = original
 assert(not a.deps.cache:get("link:s.example.com:" .. code))
 assert(a.request("GET","/" .. code) == 410)
 --- request
@@ -99,7 +99,7 @@ accepted
 --- test_code
 local code = a.create()
 local other = require("linklet.cache.local").new("other_cache")
-local sync = require("linklet.cache.sync").new(a.deps.db,other,0.05)
+local sync = require("linklet.cache.sync").new(a.deps.runtime,other,0.05)
 assert(sync:tick())
 assert(other:set("link:s.example.com:" .. code,"https://example.com/page",300))
 assert(other:get("link:s.example.com:" .. code))
@@ -121,22 +121,50 @@ accepted
 local code=a.create()
 local cache=a.deps.cache
 local key="link:s.example.com:"..code
-local sync=require("linklet.cache.sync").new(a.deps.db,cache,0.02)
+local sync=require("linklet.cache.sync").new(a.deps.runtime,cache,0.02)
 assert(sync:tick())
 assert(a.request("GET","/"..code)==302)
 assert(a.deps.link_model:disable(code,1)) -- durable revision changes without local invalidation
-sync.db={query=function() return nil,"sync unavailable" end}
+sync.revisions={current_revision=function() return nil,"sync unavailable" end}
 assert(not sync:tick())
 ngx.sleep(0.05)
 assert(not cache:get(key))
 assert(a.request("GET","/"..code)==410)
-local original=a.deps.link_model.find_by_code
-a.deps.link_model.find_by_code=function() return nil,"db unavailable" end
+local original=a.deps.link_model.find_for_resolution
+a.deps.link_model.find_for_resolution=function() return nil,"db unavailable" end
 assert(a.request("GET","/"..code)==500)
-a.deps.link_model.find_by_code=original
-sync.db=a.deps.db
+a.deps.link_model.find_for_resolution=original
+sync.revisions=a.deps.runtime
 assert(sync:tick())
 assert(not cache:get(key))
+assert(a.request("GET","/"..code)==410)
+--- request
+GET /t
+--- response_body
+accepted
+--- no_error_log
+[error]
+
+=== TEST 7: invalidation immediately before cache write keeps stale data out of the active generation
+--- test_code
+local code=a.create()
+local cache=a.deps.cache
+local write=cache.set_for_generation
+local started=require("ngx.semaphore").new()
+local resume=require("ngx.semaphore").new()
+cache.set_for_generation=function(self,key,value,ttl,generation)
+    started:post(1)
+    assert(resume:wait(5))
+    return write(self,key,value,ttl,generation)
+end
+local lookup=ngx.thread.spawn(function() return a.request("GET","/"..code) end)
+assert(started:wait(5))
+assert(a.request("PUT","/api/v1/shorten/disable",require("cjson").encode({code=code}))==200)
+resume:post(1)
+local ok,status=ngx.thread.wait(lookup)
+assert(ok and status==302) -- the already-running request may finish
+cache.set_for_generation=write
+assert(not cache:get("link:s.example.com:"..code))
 assert(a.request("GET","/"..code)==410)
 --- request
 GET /t

@@ -1,9 +1,22 @@
 -- Domain use case: injected dependencies, domain errors, no transport concerns.
 local Time = require("linklet.core.time")
+local SLDS = require("slds")
+local Policy = require("linklet.core.short_link_policy")
 local _M = {}
 _M.__index = _M
 
 function _M.new(deps)
+    assert(deps.short_link_repository, "short_link_repository is required")
+    local generator = deps.code_generator or {generate = function()
+        local id, err = deps.id_generator:next_id()
+        if not id then return nil, err or "unavailable" end
+        return deps.obfuscator.generate(id)
+    end}
+    deps.code_generator = generator
+    deps.interactor = SLDS.new({
+        repository = deps.short_link_repository, code_generator = generator,
+        lifecycle = Policy.lifecycle, clock = deps.now or os.time,
+    })
     return setmetatable(deps, _M)
 end
 
@@ -16,7 +29,7 @@ function _M:create(tenant_id, params)
     if type(url) ~= "string" or url == "" then
         return failure("target_url is required", "invalid_url")
     end
-    if #url > 2048 or not url:match("^https?://[^/%s?#]+") or url:find("[%c%s]") then
+    if not Policy.valid_target(url) then
         return failure("target_url must be an HTTP(S) URL", "invalid_url")
     end
     if not group_id or group_id < 1 or group_id > 4294967295 or group_id ~= math.floor(group_id) then
@@ -41,13 +54,51 @@ function _M:create(tenant_id, params)
         return failure("domain not configured for group", "domain_unavailable")
     end
 
-    local id = self.id_generator:next_id()
-    if not id then return failure("failed to generate ID", "unavailable") end
-    local code = self.obfuscator.generate(id)
-    local link = self.link_model:create({
-        code = code, target_url = url, group_id = group_id, expires_at = params.expires_at,
-    }, tenant_id)
-    if not link then return failure("failed to create link", "unavailable") end
-    return {code = code, domain = link.domain}
+    -- Scope the result view to this call. Concurrent creates never share result
+    -- state, and ctx remains read-only. SLDS still owns generic orchestration.
+    local view
+    local repository = setmetatable({create = function(_, ctx, candidate)
+        local created, write_err, committed = self.short_link_repository:create_with_view(ctx, candidate)
+        view = committed
+        return created, write_err
+    end}, {__index = self.short_link_repository})
+    local operation = SLDS.new({repository = repository, code_generator = self.code_generator,
+        lifecycle = Policy.lifecycle, clock = self.now or os.time})
+    local link, create_err = operation:create({actor = {tenant_id = tenant_id}}, {
+        namespace = Policy.namespace, target = url, expires_at = params.expires_at and Time.parse(params.expires_at),
+        metadata = {group_id = group_id},
+    })
+    if not link then
+        if create_err == SLDS.Errors.CONFLICT or create_err == SLDS.Errors.INVALID then
+            return failure("creation conflicted with current state", "conflict")
+        end
+        return failure("failed to create link", "unavailable")
+    end
+    return {code = link.code, domain = view.domain}
+end
+
+function _M:disable(tenant_id, code)
+    if type(code) ~= "string" or code == "" or #code > 20 then
+        return failure("code is required", "invalid_code")
+    end
+    local link, err = self.interactor:update({actor = {tenant_id = tenant_id}},
+        SLDS.Identity.new(Policy.namespace, code), {status = SLDS.Lifecycle.DISABLED})
+    if not link then
+        if err == SLDS.Errors.NOT_FOUND or err == SLDS.Errors.INVALID then
+            return failure("link not found or already disabled", "link_missing")
+        end
+        return failure("database unavailable", "unavailable")
+    end
+    return {code = link.code, status = "disabled"}
+end
+
+function _M:get(tenant_id, code)
+    if type(code) ~= "string" or code == "" or #code > 20 then
+        return failure("code is required", "invalid_code")
+    end
+    local row, err = self.link_model:find_authorized(code, tenant_id)
+    if err then return failure("database unavailable", "unavailable") end
+    if not row then return failure("link not found", "not_found") end
+    return row
 end
 return _M

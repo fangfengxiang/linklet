@@ -1,283 +1,197 @@
--- spec/resolve_spec.lua
--- 解析处理器测试：缓存命中/未命中、状态校验、过期检查
--- Resolve handler tests: cache hit/miss, status validation, expiration
-
 local helper = require("helper")
-local CacheHandler = require("linklet.gateway.cache")
-local ResolveHandler = require("linklet.gateway.resolver")
-local RedirectHandler = require("linklet.gateway.redirect")
+local slds = require("slds")
+local Resolver = require("linklet.gateway.resolver")
+local Handler = require("linklet.gateway.handler")
 
-describe("Resolution flow", function()
-    local cache, link_model, resp
+local function projection(fields)
+    fields = fields or {}
+    return {
+        link = assert(slds.ShortLink.new({
+            namespace = "linklet", code = "aB9xK2", target = "https://example.com/page",
+            status = fields.status or slds.Lifecycle.ACTIVE,
+            expires_at = fields.expires_at, metadata = {group_id = 1},
+        })),
+        domain = fields.domain or "s.example.com",
+        domain_status = fields.domain_status or 2,
+        domain_deleted = fields.domain_deleted or false,
+        tenant_status = fields.tenant_status,
+        group_status = fields.group_status,
+    }
+end
 
+describe("Gateway resolution", function()
+    local cache, repository, resolver, queries
     before_each(function()
+        queries = 0
         cache = helper.mock_cache()
-        resp = helper.mock_response()
+        cache.set_for_generation = function(self, key, value, ttl, generation)
+            if generation == self:generation() then return self:set(key, value, ttl) end
+            return true
+        end
+        repository = {find_for_resolution = function()
+            queries = queries + 1
+            return projection()
+        end}
+        resolver = Resolver.new({resolution_repository = repository, cache = cache, now = function() return 100 end})
     end)
 
-    describe("CacheHandler", function()
-        it("returns cached value on cache hit", function()
-            cache:set("link:s.example.com:aB9xK2", "https://example.com/target")
-            local ch = CacheHandler.new(cache)
-
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-            local next_called = false
-            ch:handle(ctx, function() next_called = true; return true end)
-
-            assert.truthy(ctx.cache_hit)
-            assert.truthy(ctx.resolved)
-            assert.equals("https://example.com/target", ctx.target_url)
-            assert.truthy(next_called)
-        end)
-
-        it("passes through on cache miss", function()
-            local ch = CacheHandler.new(cache)
-
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-            local next_called = false
-            ch:handle(ctx, function() next_called = true; return true end)
-
-            assert.is_nil(ctx.cache_hit)
-            assert.is_nil(ctx.resolved)
-            assert.truthy(next_called)
-        end)
+    it("returns a resolution value, caches it and skips storage on a healthy hit", function()
+        local result = assert(resolver:resolve("s.example.com", "aB9xK2"))
+        assert.equals("https://example.com/page", result.target_url)
+        assert.equals(1, queries)
+        result = assert(resolver:resolve("S.Example.com.:443", "aB9xK2"))
+        assert.is_true(result.cache_hit)
+        assert.equals(1, queries)
     end)
 
-    describe("ResolveHandler", function()
-        local resolve_handler
-
-        before_each(function()
-            link_model = {
-                find_by_code = function(self, code)
-                    return {code = code,
-                        target_url = "https://example.com/page", domain="s.example.com", domain_status=2,
-                        status = 1}
-                end,
-            }
-            resolve_handler = ResolveHandler.new({
-                link_model = link_model,
-                cache = cache,
-                cache_ttl = 300,
-            })
-        end)
-
-        it("resolves from database on cache miss", function()
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-
-            local next_called = false
-            resolve_handler:handle(ctx, function() next_called = true; return true end)
-
-            assert.truthy(ctx.resolved)
-            assert.equals("https://example.com/page", ctx.target_url)
-            assert.truthy(next_called)
-        end)
-
-        it("writes to cache after DB resolution", function()
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-
-            resolve_handler:handle(ctx, function() return true end)
-
-            assert.equals("https://example.com/page", cache:get("link:s.example.com:aB9xK2"))
-        end)
-
-        it("skips DB query when already resolved (cache hit)", function()
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-                resolved = true,
-                target_url = "https://cached.com",
-            }
-
-            local next_called = false
-            resolve_handler:handle(ctx, function() next_called = true; return true end)
-
-            assert.truthy(next_called)
-            assert.equals("https://cached.com", ctx.target_url)
-        end)
-
-        it("returns 404 for non-existent code", function()
-            link_model.find_by_code = function() return nil end
-
-            local ctx = {host="s.example.com",
-                params = {code = "zzzzzz"},
-                cache = cache,
-                response = resp,
-            }
-
-            resolve_handler:handle(ctx, function() end)
-
-            assert.equals(404, resp._status)
-        end)
-
-        it("returns 410 for disabled link", function()
-            link_model.find_by_code = function()
-                return {code = "aB9xK2", target_url = "https://example.com", domain="s.example.com", domain_status=2,
-                        status = 2}
-            end
-
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-
-            resolve_handler:handle(ctx, function() end)
-
-            assert.equals(410, resp._status)
-        end)
-
-        it("returns 410 for expired link (numeric expires_at)", function()
-            link_model.find_by_code = function()
-                return {code = "aB9xK2", target_url = "https://example.com", domain="s.example.com", domain_status=2,
-                        status = 1, expires_at = 1000}
-            end
-
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-
-            resolve_handler:handle(ctx, function() end)
-
-            assert.equals(410, resp._status)
-        end)
-
-        it("returns 410 for expired link (string expires_at with ngx)", function()
-            link_model.find_by_code = function()
-                return {code = "aB9xK2", target_url = "https://example.com",
-                        domain="s.example.com", domain_status=2,
-                        status = 1, expires_epoch = 978307200}
-            end
-
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-
-            resolve_handler:handle(ctx, function() end)
-
-            assert.equals(410, resp._status)
-        end)
-
-        it("returns 404 when code is missing from params", function()
-            local ctx = {host="s.example.com",
-                params = {},
-                cache = cache,
-                response = resp,
-            }
-
-            resolve_handler:handle(ctx, function() end)
-
-            assert.equals(404, resp._status)
-        end)
+    it("isolates hosts even when the code has a warm cache entry", function()
+        assert(resolver:resolve("s.example.com", "aB9xK2"))
+        local result, err = resolver:resolve("other.example.com", "aB9xK2")
+        assert.is_nil(result)
+        assert.equals("not_found", err.kind)
+        assert.is_nil(cache:get("link:other.example.com:aB9xK2"))
     end)
 
-    describe("RedirectHandler", function()
-        it("sets 302 redirect with Location header", function()
-            local rh = RedirectHandler.new()
-
-            local ctx = {host="s.example.com",
-                target_url = "https://example.com/target",
-                response = resp,
-            }
-
-            rh:handle(ctx, function() end)
-
-            assert.equals(302, resp._status)
-            assert.equals("https://example.com/target", resp._location)
-        end)
-
-        it("returns 404 when target_url is not set", function()
-            local rh = RedirectHandler.new()
-
-            local ctx = {host="s.example.com",
-                response = resp,
-            }
-
-            rh:handle(ctx, function() end)
-
-            assert.equals(404, resp._status)
-        end)
+    it("rejects invalid host and missing code before reading storage", function()
+        for _, args in ipairs({{false, "aB9xK2"}, {"a..example.com", "aB9xK2"}, {"s.example.com", ""}}) do
+            local result, err = resolver:resolve(args[1], args[2])
+            assert.is_nil(result)
+            assert.equals("not_found", err.kind)
+        end
+        assert.equals(0, queries)
     end)
 
-    describe("Full resolution flow (cache miss)", function()
-        it("chain: cache_miss → DB_resolve → redirect", function()
-            cache = helper.mock_cache()
-            link_model = {
-                find_by_code = function(self, code)
-                    return {code = code,
-                        target_url = "https://target.example.com", domain="s.example.com", domain_status=2,
-                        status = 1}
-                end,
-            }
-
-            local ch = CacheHandler.new(cache)
-            local rh = ResolveHandler.new({link_model = link_model, cache = cache, cache_ttl = 300})
-            local rd = RedirectHandler.new()
-
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
-
-            -- 执行中间件链 / Execute middleware chain
-            ch:handle(ctx, function()
-                return rh:handle(ctx, function()
-                    return rd:handle(ctx, function() return true end)
-                end)
-            end)
-
-            assert.equals("https://target.example.com", ctx.target_url)
-            assert.equals(302, resp._status)
-            assert.equals("https://target.example.com", resp._location)
-            -- 验证缓存被写入 / verify cache was written
-            assert.equals("https://target.example.com", cache:get("link:s.example.com:aB9xK2"))
-        end)
+    it("distinguishes missing links from storage failures", function()
+        repository.find_for_resolution = function() return nil end
+        local result, err = resolver:resolve("s.example.com", "aB9xK2")
+        assert.is_nil(result)
+        assert.equals("not_found", err.kind)
+        repository.find_for_resolution = function() return nil, "unavailable" end
+        result, err = resolver:resolve("s.example.com", "aB9xK2")
+        assert.is_nil(result)
+        assert.equals("unavailable", err.kind)
     end)
 
-    describe("Full resolution flow (cache hit)", function()
-        it("chain: cache_hit → skip_DB → redirect", function()
-            cache = helper.mock_cache()
-            cache:set("link:s.example.com:aB9xK2", "https://cached.example.com")
+    it("uses SLDS lifecycle and deadline decisions without tenant or group status", function()
+        repository.find_for_resolution = function()
+            return projection({tenant_status = 2, group_status = 2})
+        end
+        assert(resolver:resolve("s.example.com", "aB9xK2"))
+        for _, status in ipairs({slds.Lifecycle.DISABLED, slds.Lifecycle.DELETED}) do
+            repository.find_for_resolution = function() return projection({status = status}) end
+            local cold = Resolver.new({resolution_repository = repository, now = function() return 100 end})
+            local result, err = cold:resolve("s.example.com", "aB9xK2")
+            assert.is_nil(result)
+            assert.equals("gone", err.kind)
+        end
+        repository.find_for_resolution = function() return projection({expires_at = 100}) end
+        local cold = Resolver.new({resolution_repository = repository, now = function() return 100 end})
+        local result, err = cold:resolve("s.example.com", "aB9xK2")
+        assert.is_nil(result)
+        assert.equals("link expired", err.message)
+    end)
 
-            local ch = CacheHandler.new(cache)
-            local rh = ResolveHandler.new({link_model = link_model, cache = cache, cache_ttl = 300})
-            local rd = RedirectHandler.new()
+    it("truncates cache TTL at fractional expiration and respects a shorter configured TTL", function()
+        local observed_ttl
+        cache.set = function(_, _, _, ttl) observed_ttl = ttl; return true end
+        repository.find_for_resolution = function() return projection({expires_at = 100.25}) end
+        assert(resolver:resolve("s.example.com", "aB9xK2"))
+        assert.equals(0.25, observed_ttl)
+        resolver.cache_ttl = 0.1
+        assert(resolver:resolve("s.example.com", "aB9xK2"))
+        assert.equals(0.1, observed_ttl)
+    end)
 
-            local ctx = {host="s.example.com",
-                params = {code = "aB9xK2"},
-                cache = cache,
-                response = resp,
-            }
+    it("rejects an unavailable or deleted domain and checks host before revealing link state", function()
+        for _, fields in ipairs({{domain_status = 3}, {domain_deleted = true}}) do
+            repository.find_for_resolution = function() return projection(fields) end
+            local result, err = resolver:resolve("s.example.com", "aB9xK2")
+            assert.is_nil(result)
+            assert.equals("gone", err.kind)
+            result, err = resolver:resolve("wrong.example.com", "aB9xK2")
+            assert.is_nil(result)
+            assert.equals("not_found", err.kind)
+        end
+    end)
 
-            ch:handle(ctx, function()
-                return rh:handle(ctx, function()
-                    return rd:handle(ctx, function() return true end)
-                end)
-            end)
+    it("does not refill cache when invalidation races a storage lookup", function()
+        local generation = 0
+        cache.generation = function() return generation end
+        repository.find_for_resolution = function()
+            generation = generation + 1
+            return projection()
+        end
+        assert(resolver:resolve("s.example.com", "aB9xK2"))
+        assert.is_nil(cache:get("link:s.example.com:aB9xK2"))
+    end)
 
-            assert.equals("https://cached.example.com", ctx.target_url)
-            assert.equals(302, resp._status)
-        end)
+    it("cannot refill the active generation if invalidation occurs immediately before the write", function()
+        local Cache = require("linklet.cache.local")
+        local values = {["cache:generation"] = 0}
+        local dict = {
+            get = function(_, key) return values[key] end,
+            set = function(_, key, value) values[key] = value; return true end,
+            delete = function(_, key) values[key] = nil end,
+            incr = function(_, key, amount, initial)
+                values[key] = (values[key] or initial) + amount
+                return values[key]
+            end,
+        }
+        local first, second = Cache.new(), Cache.new()
+        first:set_dict(dict); second:set_dict(dict)
+        local write = first.set_for_generation
+        first.set_for_generation = function(self, key, value, ttl, generation)
+            assert(second:invalidate("aB9xK2"))
+            return write(self, key, value, ttl, generation)
+        end
+        local racing = Resolver.new({resolution_repository = repository, cache = first})
+        assert(racing:resolve("s.example.com", "aB9xK2"))
+        assert.equals(1, first:generation())
+        assert.is_nil(second:get("link:s.example.com:aB9xK2"))
+        assert.equals("https://example.com/page", values["link:s.example.com:aB9xK2:g0"])
+    end)
+
+    it("can resolve without a cache", function()
+        local cold = Resolver.new({resolution_repository = repository})
+        local result = assert(cold:resolve("s.example.com", "aB9xK2"))
+        assert.equals("https://example.com/page", result.target_url)
+    end)
+
+    it("requires a finite positive TTL and an explicit read capability", function()
+        assert.has_error(function() Resolver.new({cache_ttl = 0}) end)
+        assert.has_error(function() Resolver.new({}) end)
+    end)
+end)
+
+describe("Gateway HTTP adapter", function()
+    it("maps the successful resolution to an empty 302 response", function()
+        local response = helper.mock_response()
+        local handler = Handler.new({resolve = function(_, host, code)
+            assert.equals("s.example.com", host)
+            assert.equals("aB9xK2", code)
+            return {target_url = "https://example.com"}
+        end})
+        assert(handler:handle({method = "GET", uri = "/aB9xK2", host = "s.example.com", response = response}))
+        assert.equals(302, response._status)
+        assert.equals("https://example.com", response._location)
+        assert.is_true(response.sent)
+    end)
+
+    it("maps resolver errors to transport responses", function()
+        for kind, status in pairs({not_found = 404, gone = 410, unavailable = 500}) do
+            local response = helper.mock_response()
+            local handler = Handler.new({resolve = function() return nil, {kind = kind, message = "rejected"} end})
+            handler:handle({method = "GET", uri = "/aB9xK2", host = "s.example.com", response = response})
+            assert.equals(status, response._status)
+        end
+    end)
+
+    it("rejects non-Gateway paths and methods before invoking the resolver", function()
+        local handler = Handler.new({resolve = function() error("must not resolve") end})
+        for _, request in ipairs({{method = "POST", uri = "/aB9xK2"}, {method = "GET", uri = "/api/v1/admin/list"}}) do
+            request.response = helper.mock_response()
+            handler:handle(request)
+            assert.equals(404, request.response._status)
+        end
     end)
 end)

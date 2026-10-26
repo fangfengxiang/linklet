@@ -7,19 +7,16 @@ local TenantCredential = require("linklet.repository.credential")
 describe("TenantCredential", function()
     local model, db
 
-    local encrypt, decrypt
+    local crypto
     before_each(function()
-        encrypt, decrypt = TenantCredential._encrypt, TenantCredential._decrypt
-        TenantCredential._encrypt = function(value) return "mock:" .. value end
-        TenantCredential._decrypt = function(value) return value:sub(6) end
-        db = helper.mock_db(function(sql, ...)
+        crypto = {
+            encrypt = function(value) return "mock:" .. value end,
+            decrypt = function(value) return value:sub(6) end,
+        }
+        db = helper.mock_db(function()
             return {{id = 1, tenant_id = 1, access_key = "test-ak", status = 1}}
         end)
-        model = TenantCredential.new(db)
-    end)
-
-    after_each(function()
-        TenantCredential._encrypt, TenantCredential._decrypt = encrypt, decrypt
+        model = TenantCredential.new(db, crypto)
     end)
 
     describe("create", function()
@@ -44,7 +41,7 @@ describe("TenantCredential", function()
         it("finds credential by AK", function()
             db.query = function(self, sql, ...)
                 return {{id = 1, tenant_id = 1, access_key = "test-ak",
-                         secret_key_enc = TenantCredential._encrypt("test-sk"), status = 1}}
+                         secret_key_enc = crypto.encrypt("test-sk"), status = 1}}
             end
 
             local row = model:find_by_access_key("test-ak")
@@ -76,61 +73,6 @@ describe("TenantCredential", function()
 
             local row = model:disable("nonexistent")
             assert.is_nil(row)
-        end)
-    end)
-
-    describe("verify_signature", function()
-        it("returns false for nil parameters", function()
-            assert.is_false(TenantCredential.verify_signature(nil, "str", "sig"))
-            assert.is_false(TenantCredential.verify_signature("sk", nil, "sig"))
-            assert.is_false(TenantCredential.verify_signature("sk", "str", nil))
-        end)
-
-        it("returns false for empty strings", function()
-            assert.is_false(TenantCredential.verify_signature("", "str", "sig"))
-            assert.is_false(TenantCredential.verify_signature("sk", "", "sig"))
-            assert.is_false(TenantCredential.verify_signature("sk", "str", ""))
-        end)
-    end)
-
-    describe("_hex_decode", function()
-        it("decodes valid hex string", function()
-            local decoded = TenantCredential._hex_decode("48656c6c6f")
-            assert.equals("Hello", decoded)
-        end)
-
-        it("returns nil for odd-length hex", function()
-            local decoded = TenantCredential._hex_decode("486")
-            assert.is_nil(decoded)
-        end)
-
-        it("returns nil for invalid hex characters", function()
-            local decoded = TenantCredential._hex_decode("xyz")
-            assert.is_nil(decoded)
-        end)
-
-        it("returns nil for nil input", function()
-            local decoded = TenantCredential._hex_decode(nil)
-            assert.is_nil(decoded)
-        end)
-    end)
-
-    describe("_constant_time_compare", function()
-        it("returns true for equal strings", function()
-            assert.is_true(TenantCredential._constant_time_compare("hello", "hello"))
-        end)
-
-        it("returns false for different strings", function()
-            assert.is_false(TenantCredential._constant_time_compare("hello", "world"))
-        end)
-
-        it("returns false for different lengths", function()
-            assert.is_false(TenantCredential._constant_time_compare("hello", "hi"))
-        end)
-
-        it("returns false for nil arguments", function()
-            assert.is_false(TenantCredential._constant_time_compare(nil, "hello"))
-            assert.is_false(TenantCredential._constant_time_compare("hello", nil))
         end)
     end)
 
