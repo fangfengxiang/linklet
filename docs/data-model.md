@@ -1,6 +1,6 @@
 # Linklet v0.2 数据模型基线
 
-实现补充：以 [v0.2 SDD](../openspec/changes/refactor-backend-v02/design.md) 冻结已有短链后的域名绑定；有未删除 Group 绑定时禁止域名下线。数据库增量迁移暂留旧列及 sl_link 兼容视图，清理属于后续 contract。升级步骤见 [迁移手册](v02-migration.md)。
+实现补充：以 [v0.2 设计](design.md) 冻结已有短链后的域名绑定；有未删除 Group 绑定时禁止域名下线。数据库增量迁移暂留旧列及 sl_link 兼容视图，清理属于后续 contract。升级步骤见 [迁移手册](v02-migration.md)。
 
 PostgreSQL · OpenResty · DDD 领域建模 · 7 张表
 

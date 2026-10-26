@@ -61,7 +61,7 @@ make lint
 | test/nginx/ | Test::Nginx 运行时验收 |
 | test/benchmark/ | 算法与缓存微基准 |
 | deploy/ | 开发/验收 Compose、Kubernetes 模板 |
-| openspec/ | 提案、设计、能力规格和任务 |
+| openspec/ | 本地规划工作区，Git 忽略；发布约定记录在 docs/ |
 | docs/ | API、开发、部署、设计和验收说明 |
 
 旧库升级须先阅读 [v0.2 迁移手册](docs/v02-migration.md)，不直接覆盖 001。

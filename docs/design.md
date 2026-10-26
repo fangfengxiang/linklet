@@ -2,7 +2,7 @@
 
 当前短链领域复用 lua-slds；调用、存储与部署边界见 [SLDS 集成契约](slds-integration.md)。
 
-设计依据为 [v0.2 SDD](../openspec/changes/refactor-backend-v02/design.md)，正式行为规范见 `openspec/specs/`。迁移与发布门槛见 [迁移手册](v02-migration.md)，文件映射和取舍见 [审计记录](v02-audit.md)。
+本文和 [数据模型](data-model.md) 记录可发布的架构约定；OpenSpec 为本地规划工作区，暂不入库。迁移与发布门槛见 [迁移手册](v02-migration.md)，文件映射和取舍见 [审计记录](v02-audit.md)。
 
 ```mermaid
 flowchart LR
