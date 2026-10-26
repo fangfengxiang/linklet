@@ -165,6 +165,45 @@ paths:
       - AccessKey: []
         Signature: []
         Timestamp: []
+  /api/v1/shorten/list:
+    get:
+      operationId: get_api_v1_shorten_list
+      description: List the first 100 short links under the authenticated active tenant's
+        current group grants. Optional group_id narrows those grants; an unauthorized
+        group returns an empty array. Includes disabled and expired links, newest first
+        with id as a deterministic tiebreaker. No total count or pagination cursor.
+      parameters:
+      - in: query
+        name: group_id
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 4294967295
+      responses:
+        '200':
+          description: JSON envelope with data as an array, including [] when empty.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Envelope'
+                - properties:
+                    data:
+                      type: array
+                      maxItems: 100
+                      items:
+                        $ref: '#/components/schemas/ShortLinkListItem'
+        '400':
+          description: Invalid group_id.
+        '401':
+          description: Missing or invalid tenant signature, or inactive credential/tenant.
+        '500':
+          description: Storage unavailable.
+      security:
+      - AccessKey: []
+        Signature: []
+        Timestamp: []
   /api/v1/shorten/get:
     get:
       operationId: get_api_v1_shorten_get
@@ -454,6 +493,40 @@ paths:
                   maxLength: 256
               required:
               - tenant_id
+  /api/v1/admin/credential/list:
+    get:
+      operationId: get_api_v1_admin_credential_list
+      description: Internal platform query for the first 100 credentials of the required
+        tenant_id, including disabled credentials. Returns only public fields and never
+        plaintext or encrypted secret keys. Newest first, with id as a tiebreaker.
+      parameters:
+      - in: query
+        name: tenant_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+      responses:
+        '200':
+          description: JSON envelope with safe credential data; [] for an unknown or empty tenant.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Envelope'
+                - properties:
+                    data:
+                      type: array
+                      maxItems: 100
+                      items:
+                        $ref: '#/components/schemas/PublicCredential'
+        '400':
+          description: Missing or invalid tenant_id.
+        '403':
+          description: Request is outside the platform management allowlist.
+        '500':
+          description: Storage unavailable.
   /api/v1/admin/credential/disable:
     put:
       operationId: put_api_v1_admin_credential_disable
@@ -736,12 +809,37 @@ paths:
   /api/v1/admin/group/list:
     get:
       operationId: get_api_v1_admin_group_list
-      description: /api/v1/admin/group/list
+      description: Internal platform query for the first 100 non-deleted groups, ordered
+        by group_id. Optional tenant_id returns only that active tenant's granted groups.
+        has_links includes disabled and expired short links and indicates a frozen domain
+        binding. Empty results are []; no pagination or total count is provided.
       responses:
         '200':
-          description: 'JSON envelope: code=0 on success; nonzero code and data=null
-            on failure'
-          content: *id001
+          description: JSON envelope with a bounded group array, including [] when empty.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Envelope'
+                - properties:
+                    data:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: object
+                        properties:
+                          group_id:
+                            type: integer
+                          name:
+                            type: string
+                          domain_entry_id:
+                            type: integer
+                          status:
+                            type: integer
+                            enum: [1, 2]
+                          has_links:
+                            type: boolean
+                        required: [group_id, name, domain_entry_id, status, has_links]
         '400':
           description: 'JSON envelope: code=0 on success; nonzero code and data=null
             on failure'
@@ -769,7 +867,7 @@ paths:
       parameters:
       - in: query
         name: tenant_id
-        required: true
+        required: false
         schema:
           type: integer
           minimum: 1
@@ -1029,6 +1127,52 @@ paths:
           description: database unavailable (readiness only)
 components:
   schemas:
+    PublicCredential:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        tenant_id:
+          type: integer
+        access_key:
+          type: string
+        status:
+          type: integer
+          enum: [1, 2]
+        description:
+          type: [string, 'null']
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        disabled_at:
+          type: [string, 'null']
+      required: [id, tenant_id, access_key, status]
+    ShortLinkListItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        target_url:
+          type: string
+        group_id:
+          type: integer
+        status:
+          type: integer
+          enum: [1, 2]
+        expires_at:
+          type: [string, 'null']
+        created_at:
+          type: string
+        disabled_at:
+          type: [string, 'null']
+        domain:
+          type: string
+      required: [id, code, target_url, group_id, status, domain]
     Envelope:
       type: object
       properties:

@@ -73,6 +73,7 @@ local function mock_response()
     result.success = function(self, data, status)
         return self:json(status or 200, {code = 0, message = "success", data = data})
     end
+    result.success_list = result.success
     result.error_response = function(self, code, message, status)
         return self:json(status or 400, {code = code, message = message, data = nil})
     end

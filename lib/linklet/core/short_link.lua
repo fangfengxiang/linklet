@@ -101,4 +101,16 @@ function _M:get(tenant_id, code)
     if not row then return failure("link not found", "not_found") end
     return row
 end
+function _M:list(tenant_id, group_id)
+    if group_id ~= nil then
+        local kind = type(group_id)
+        group_id = (kind == "number" or kind == "string") and tonumber(group_id) or nil
+        if not group_id or group_id < 1 or group_id > 4294967295 or group_id ~= math.floor(group_id) then
+            return failure("group_id must be a uint32", "invalid_group_id")
+        end
+    end
+    local rows, err = self.link_model:find_all_authorized(tenant_id, group_id, 100)
+    if not rows or err then return failure("database unavailable", "unavailable") end
+    return rows
+end
 return _M

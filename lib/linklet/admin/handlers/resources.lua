@@ -1,4 +1,5 @@
 -- Local operator API; network allowlist is enforced by the production Nginx locations.
+local Response = require("linklet.http.response")
 local _M={}
 _M.__index=_M
 local function integer(v,max)
@@ -22,13 +23,21 @@ local function result(ctx,row,err)
     if not row then return ctx.response:error_response(409,"resource missing or state conflict",409) end
     return ctx.response:success(row)
 end
+local function list_result(ctx, rows, err)
+    if not rows or err then return result(ctx, rows, err) end
+    return ctx.response:success_list(rows)
+end
+local function tenant_result(ctx, row, err)
+    if row and type(row.group_ids) == "table" then row.group_ids = Response.array(row.group_ids) end
+    return result(ctx, row, err)
+end
 function _M.new(deps) return setmetatable(deps,_M) end
 function _M:handle(ctx,resource,action)
     local p=ctx.request:all_params()
     local function bad() return ctx.response:error_response(4000,"invalid resource parameters",400) end
     if resource=="domain" then
         local repo=self.domain_entry_model
-        if action=="list" then return result(ctx,repo:find_all(100)) end
+        if action=="list" then return list_result(ctx,repo:find_all(100)) end
         if action=="create" then
             local host=require("linklet.core.domain_entry").normalize(p.domain)
             if not host or host~=p.domain or #host>255 or not host:find("%.") or
@@ -42,9 +51,10 @@ function _M:handle(ctx,resource,action)
         return result(ctx,repo:disable(id))
     elseif resource=="group" then
         if action=="list" then
+            if p.tenant_id == nil then return list_result(ctx,self.group_model:find_all(100)) end
             local id=integer(p.tenant_id)
             if not id then return bad() end
-            return result(ctx,self.group_model:find_by_tenant(id,100))
+            return list_result(ctx,self.group_model:find_by_tenant(id,100))
         end
         local id=integer(p.group_id,4294967295)
         if not id then return bad() end
@@ -61,7 +71,7 @@ function _M:handle(ctx,resource,action)
     elseif resource=="group_config" then
         local id=integer(p.group_id,4294967295)
         if not id then return bad() end
-        if action=="list" then return result(ctx,self.group_config_model:list(id)) end
+        if action=="list" then return list_result(ctx,self.group_config_model:list(id)) end
         if not text(p.config_key,128) then return bad() end
         if action=="delete" then return result(ctx,self.group_config_model:delete(id,p.config_key)) end
         if type(p.config_value)~="string" or #p.config_value>65536 or
@@ -73,7 +83,7 @@ function _M:handle(ctx,resource,action)
         if action=="status" then
             local status=integer(p.status,2)
             if not status then return bad() end
-            return result(ctx,self.tenant_model:set_status(id,status))
+            return tenant_result(ctx,self.tenant_model:set_status(id,status))
         end
         if type(p.group_ids)~="table" then return bad() end
         local ids,count={},0
@@ -82,7 +92,7 @@ function _M:handle(ctx,resource,action)
             ids[k]=integer(v,4294967295);count=count+1
         end
         if count~=#ids or count>10000 then return bad() end
-        return result(ctx,self.tenant_model:grant(id,ids))
+        return tenant_result(ctx,self.tenant_model:grant(id,ids))
     end
     return bad()
 end

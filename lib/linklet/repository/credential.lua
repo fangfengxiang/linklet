@@ -75,4 +75,12 @@ function _M:disable(access_key)
     return res[1]
 end
 
+-- Platform list never loads ciphertext or decrypts a credential.
+function _M:find_by_tenant(tenant_id, limit)
+    local rows, err = self.db:query([[SELECT id,tenant_id,access_key,status,description,
+        created_at,updated_at,disabled_at FROM sl_tenant_credential
+        WHERE tenant_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2]], tenant_id, limit or 100)
+    return rows, Errors.normalize(err)
+end
+
 return _M

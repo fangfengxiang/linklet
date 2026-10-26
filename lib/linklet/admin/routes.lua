@@ -62,6 +62,10 @@ function _M.create(deps)
         end
     )
 
+    router:get("/api/v1/admin/credential/list", function(ctx)
+        return deps.credential_handler:list(ctx)
+    end)
+
     -- 凭证管理 / Credential management
     router:post("/api/v1/admin/credential/create",
         deps.json,
@@ -77,6 +81,7 @@ function _M.create(deps)
         end
     )
 
+    router:get("/api/v1/shorten/list",deps.auth,function(ctx) return deps.shorten_handler:list(ctx) end)
     router:get("/api/v1/shorten/get",deps.auth,function(ctx) return deps.shorten_handler:get(ctx) end)
     local resources={
         domain={create="post",list="get",deploy="put",disable="put"},

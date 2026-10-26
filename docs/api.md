@@ -199,6 +199,7 @@ Admin endpoints are loopback-only by default and use the same JSON response form
 | POST | `/api/v1/admin/tenant/create` | `{"name":"tenant"}` |
 | GET | `/api/v1/admin/tenant/list` | optional `limit` query parameter |
 | POST | `/api/v1/admin/credential/create` | `{"tenant_id":1}`; optional access_key/secret_key |
+| GET | `/api/v1/admin/credential/list` | required `tenant_id`; first 100, public fields only |
 | PUT | `/api/v1/admin/credential/disable` | `{"access_key":"..."}` |
 
 Generated AK/SK values use cryptographic randomness. A custom SK must contain 16–256 characters. The plaintext SK is returned only when creating the credential.
@@ -231,11 +232,17 @@ The full machine-readable contract is [api/openapi.yaml](../api/openapi.yaml). A
 | GET | domain/list | none; first 100 |
 | PUT | domain/deploy, domain/disable | id; new→deployed→offline, bound groups prevent offline |
 | POST | group/create | group_id, name, domain_entry_id |
-| GET | group/list | tenant_id query, authorized groups |
+| GET | group/list | optional tenant_id query; all platform groups when omitted, active tenant grants when supplied; first 100; includes has_links |
 | PUT | group/configure | group_id; domain_entry_id and/or status 1/2; domain changes require no links |
 | PUT | group_config/set | group_id, config_key, config_value; optional description |
 | GET | group_config/list | group_id query |
 | DELETE | group_config/delete | group_id, config_key JSON body |
+
+`GET /api/v1/shorten/list` requires AK/SK and returns the first 100 links in the authenticated active tenant's current group grants. Optional `group_id` narrows the same authorization scope; an ungranted group returns `[]`. Disabled and expired links remain visible to authorized managers. Results sort by created_at descending, then id descending, and include the bound domain for URL display. This is a bounded array, not a complete export or a paginated result; there is no total count or cursor. Sign the exact query string.
+
+`GET /api/v1/admin/credential/list?tenant_id=...` returns at most 100 credentials for the required tenant ID, including disabled credentials. The only returned fields are id, tenant_id, access_key, status, description, created_at, updated_at, disabled_at. Neither plaintext SK nor ciphertext is returned or decrypted by this query. An unknown tenant returns `[]`; malformed/missing tenant_id returns 400.
+
+Group lists return `has_links` for every group, counting all links including disabled/expired ones. Admin can use it to show the domain binding as frozen. The database remains authoritative for concurrent changes. All list responses encode empty data as JSON `[]`, including the existing domain, tenant and group-config list routes. Tenant `group_ids` is also always an array, including `[]` after creation or grant revocation.
 
 `GET /api/v1/shorten/get?code=...` requires AK/SK headers and current Group authorization. Unauthorized/missing links return 404. Two tenants granted the same Group may create, read and disable its links. Revocation affects future management operations, never historical redirects.
 

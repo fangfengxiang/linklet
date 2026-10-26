@@ -82,4 +82,23 @@ function _M:disable(ctx)
     return ctx.response:success({access_key = access_key, status = "disabled"})
 end
 
+-- Internal operator view. Whitelist again at the transport boundary.
+function _M:list(ctx)
+    local params = ctx.request:all_params()
+    local raw = params.tenant_id
+    local tenant_id = (type(raw) == "number" or type(raw) == "string") and tonumber(raw) or nil
+    if not tenant_id or tenant_id < 1 or tenant_id > 9007199254740991 or tenant_id ~= math.floor(tenant_id) then
+        return ctx.response:error_response(4001, "tenant_id is required", 400)
+    end
+    local rows, err = self.credential_model:find_by_tenant(tenant_id, 100)
+    if not rows or err then return ctx.response:internal_error("database unavailable") end
+    local safe = {}
+    local fields = {"id", "tenant_id", "access_key", "status", "description", "created_at", "updated_at", "disabled_at"}
+    for index, row in ipairs(rows) do
+        local item = {}
+        for _, field in ipairs(fields) do item[field] = row[field] end
+        safe[index] = item
+    end
+    return ctx.response:success_list(safe)
+end
 return _M

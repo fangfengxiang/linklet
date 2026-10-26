@@ -15,6 +15,8 @@ if not cjson_ok then
     cjson = nil
 end
 
+local array_mt = cjson and cjson.empty_array_mt or {}
+
 --- 创建响应实例 / Create response instance
 function _M.new()
     return setmetatable({}, _M)
@@ -55,6 +57,16 @@ function _M:success(data, status)
         message = "success",
         data = data,
     })
+end
+
+--- A list has an explicit empty-array representation, independent of row count.
+function _M.array(values)
+    if #values == 0 then return setmetatable({}, array_mt) end
+    return values
+end
+
+function _M:success_list(rows)
+    return self:success(_M.array(rows))
 end
 
 --- 错误响应 / Error response
@@ -107,6 +119,11 @@ function _M._encode_json(val)
     elseif t == "string" then
         return '"' .. val:gsub('[%z\1-\31\\"]', function(c) return string.format('\\u%04x', string.byte(c)) end) .. '"'
     elseif t == "table" then
+        if getmetatable(val) == array_mt then
+            local parts = {}
+            for i = 1, #val do parts[i] = _M._encode_json(val[i]) end
+            return "[" .. table.concat(parts, ",") .. "]"
+        end
         -- 检查是否是数组 / check if array
         local is_array = true
         local count = 0

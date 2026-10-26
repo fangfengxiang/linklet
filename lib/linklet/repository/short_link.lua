@@ -91,6 +91,19 @@ function _M:find_authorized(code,tenant_id)
     return rows and rows[1],err
 end
 
+-- Authorization is part of the read statement, including after authentication.
+function _M:find_all_authorized(tenant_id, group_id, limit)
+    local rows, err = self.db:query([[SELECT l.id,l.code,l.target_url,l.group_id,l.status,
+        l.expires_at,l.created_at,l.disabled_at,d.domain
+        FROM sl_short_link l JOIN sl_tenant t ON l.group_id=ANY(t.group_ids)
+        JOIN sl_group g ON g.group_id=l.group_id
+        JOIN sl_domain_entry d ON d.id=g.domain_entry_id
+        WHERE t.id=$1 AND t.status=1 AND t.deleted_at IS NULL
+        AND ($2::bigint IS NULL OR l.group_id=$2)
+        ORDER BY l.created_at DESC,l.id DESC LIMIT $3]], tenant_id, group_id, limit or 100)
+    return rows, Errors.normalize(err)
+end
+
 function _M:to_entity(row)
     local status = tonumber(row.status)
     if status ~= 1 and status ~= 2 then return nil, "unavailable" end

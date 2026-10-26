@@ -22,8 +22,16 @@ function _M:find_by_id_with_domain(id)
         WHERE s.group_id=$1 AND s.deleted_at IS NULL AND d.deleted_at IS NULL]],id)
     return rows and rows[1], Errors.normalize(err)
 end
+function _M:find_all(limit)
+    local rows, err = self.db:query([[SELECT g.*, EXISTS(
+        SELECT 1 FROM sl_short_link l WHERE l.group_id=g.group_id) AS has_links
+        FROM sl_group g WHERE g.deleted_at IS NULL ORDER BY g.group_id LIMIT $1]], limit or 100)
+    return rows, Errors.normalize(err)
+end
 function _M:find_by_tenant(id, limit)
-    local rows, err = self.db:query([[SELECT s.* FROM sl_group s JOIN sl_tenant t ON s.group_id=ANY(t.group_ids)
+    local rows, err = self.db:query([[SELECT s.*, EXISTS(
+        SELECT 1 FROM sl_short_link l WHERE l.group_id=s.group_id) AS has_links
+        FROM sl_group s JOIN sl_tenant t ON s.group_id=ANY(t.group_ids)
         WHERE t.id=$1 AND t.status=1 AND t.deleted_at IS NULL AND s.deleted_at IS NULL
         ORDER BY s.group_id LIMIT $2]],id,limit or 100)
     return rows, Errors.normalize(err)

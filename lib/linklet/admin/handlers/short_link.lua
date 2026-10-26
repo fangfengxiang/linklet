@@ -62,4 +62,10 @@ function _M:get(ctx)
     return ctx.response:success(row)
 end
 
+function _M:list(ctx)
+    local params = ctx.request:all_params()
+    local rows, err = self.use_case:list(ctx.tenant_id, params.group_id)
+    if not rows then return require("linklet.admin.errors").respond(ctx.response, err) end
+    return ctx.response:success_list(rows)
+end
 return _M

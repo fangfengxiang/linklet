@@ -7,6 +7,7 @@ local setmetatable = setmetatable
 local tostring = tostring
 local type = type
 
+local Response = require("linklet.http.response")
 local _M = {}
 _M.__index = _M
 
@@ -36,6 +37,7 @@ function _M:create(ctx)
         return ctx.response:internal_error("failed to create tenant: " .. tostring(err))
     end
 
+    if type(tenant.group_ids) == "table" then tenant.group_ids = Response.array(tenant.group_ids) end
     return ctx.response:success(tenant)
 end
 
@@ -52,7 +54,10 @@ function _M:list(ctx)
         return ctx.response:internal_error("failed to list tenants: " .. tostring(err))
     end
 
-    return ctx.response:success(tenants)
+    for _, tenant in ipairs(tenants) do
+        if type(tenant.group_ids) == "table" then tenant.group_ids = Response.array(tenant.group_ids) end
+    end
+    return ctx.response:success_list(tenants)
 end
 
 return _M
